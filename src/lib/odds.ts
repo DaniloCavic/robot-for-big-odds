@@ -5,8 +5,12 @@ export const MARKET_TYPES = ["HOME", "AWAY", "OVER_1_5", "UNDER_3_5"] as const;
 /** Spojeni tipovi „ishod + golovi“ – jedno tržište kladionice (npr. „1&2+“). Bez ograničenja kvote. */
 export const COMBO_TYPES = ["HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5"] as const;
 export type ComboTypeCode = (typeof COMBO_TYPES)[number];
+/** Kontra robot: igra suprotno od favorita golova – „0–1“ umesto 2+, „4+“ umesto 0–3. Bez ograničenja kvote. */
+export const KONTRA_TYPES = ["UNDER_1_5", "OVER_3_5"] as const;
+export type KontraTypeCode = (typeof KONTRA_TYPES)[number];
+export const isKontra = (t: string): t is KontraTypeCode => (KONTRA_TYPES as readonly string[]).includes(t);
 /** Svi tipovi koji mogu postojati u bazi (DRAW ostaje samo zbog starih zapisa). */
-export type MarketTypeCode = (typeof MARKET_TYPES)[number] | ComboTypeCode | "DRAW";
+export type MarketTypeCode = (typeof MARKET_TYPES)[number] | ComboTypeCode | KontraTypeCode | "DRAW";
 
 /** Od kojih delova se sastoji spojeni tip. */
 export const COMBO_PARTS: Record<ComboTypeCode, ["HOME" | "AWAY", "OVER_1_5" | "UNDER_3_5"]> = {
@@ -27,6 +31,8 @@ export const MARKET_LABELS: Record<MarketTypeCode, string> = {
   HOME_UNDER_3_5: "1&0–3",
   AWAY_OVER_1_5: "2&2+",
   AWAY_UNDER_3_5: "2&0–3",
+  UNDER_1_5: "0–1",
+  OVER_3_5: "4+",
 };
 
 export const MARKET_DESCRIPTIONS: Record<MarketTypeCode, string> = {
@@ -39,6 +45,8 @@ export const MARKET_DESCRIPTIONS: Record<MarketTypeCode, string> = {
   HOME_UNDER_3_5: "Pobeda domaćina i 0–3 gola",
   AWAY_OVER_1_5: "Pobeda gosta i 2+ gola",
   AWAY_UNDER_3_5: "Pobeda gosta i 0–3 gola",
+  UNDER_1_5: "Ukupno golova 0 ili 1",
+  OVER_3_5: "Ukupno golova 4 ili više",
 };
 
 const EPS = 1e-9;

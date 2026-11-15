@@ -88,6 +88,15 @@ enum MarketType {
   HOME_UNDER_3_5
   AWAY_OVER_1_5
   AWAY_UNDER_3_5
+  /// Kontra robot: „0–1“ (manje od 1.5 gola) i „4+“ (više od 3.5 gola)
+  UNDER_1_5
+  OVER_3_5
+}
+
+/// Koji robot je napravio skeniranje / kome pripada filter. Stari podaci su OSNOVNI.
+enum Strategy {
+  OSNOVNI
+  KONTRA
 }
 
 enum ScanStatus {
@@ -142,6 +151,8 @@ model MarketSelection {
   excludedReason String?
   /// Kvotu je ručno uneo korisnik (npr. spojeni tip sa sajta kladionice)
   manualOdds     Boolean              @default(false)
+  /// Kontra robot: kvota okidača (2+ za „0–1“, 0–3 za „4+“) u trenutku skeniranja
+  triggerOdds    Decimal?             @db.Decimal(8, 4)
   createdAt      DateTime             @default(now())
   tracked        TrackedSelection[]
   filterEntries  FilterSetSelection[]
@@ -155,6 +166,7 @@ model RobotScan {
   userId           String?
   user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   provider         String
+  strategy         Strategy          @default(OSNOVNI)
   isDemo           Boolean           @default(false)
   periodLabel      String
   startDate        DateTime
@@ -184,6 +196,7 @@ model RobotScan {
 
   @@index([startedAt])
   @@index([status])
+  @@index([strategy, startedAt])
 }
 
 enum SelectionStatus {
@@ -231,6 +244,7 @@ model FilterSet {
   userId            String?
   user              User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   name              String
+  strategy          Strategy             @default(OSNOVNI)
   status            FilterSetStatus      @default(ACTIVE)
   stakePerSelection Decimal              @db.Decimal(12, 2)
   currency          String               @default("RSD")
