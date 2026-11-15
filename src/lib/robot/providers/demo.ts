@@ -44,6 +44,11 @@ export function demoFixtures(from: Date, to: Date): ProviderFixture[] {
         const p = Math.round((1.3 + r() * 1.2) * 100) / 100;
         if (i % 2 === 0) odds[m] = { price: p, changedAt: new Date() }; // svaka druga utakmica nema spojene kvote → kandidat za ručni unos
       });
+      // DEMO kontra kvote (0–1, 4+) – zaseban generator, da kvote osnovnog robota ostanu iste kao ranije.
+      // Svaka deseta utakmica nema 0–1 ili 4+, da se vidi preskok „nema kontra kvote“.
+      const rk = rng(i * 7919 + Math.floor(start / hour));
+      if (i % 10 !== 3) odds.UNDER_1_5 = { price: Math.round((2.6 + rk() * 3) * 100) / 100, changedAt: new Date() };
+      if (i % 10 !== 7) odds.OVER_3_5 = { price: Math.round((2.4 + rk() * 2.8) * 100) / 100, changedAt: new Date() };
       out.push({
         externalId: `demo-${t}-${k}`,
         sport: "football",

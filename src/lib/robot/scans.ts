@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { MARKET_LABELS, type MarketTypeCode } from "@/lib/odds";
 import { providerName } from "./providers";
+import type { KontraDiagnostics } from "./runner";
 
 export async function getScanStatus(id: string) {
   const s = await prisma.robotScan.findUnique({ where: { id } });
@@ -9,6 +10,7 @@ export async function getScanStatus(id: string) {
   return {
     id: s.id,
     provider: s.provider,
+    strategy: s.strategy as "OSNOVNI" | "KONTRA",
     providerName: providerName(s.provider),
     isDemo: s.isDemo,
     periodLabel: s.periodLabel,
@@ -36,6 +38,11 @@ export async function getScanStatus(id: string) {
       rawSamples?: Record<string, unknown>;
       ruleLog?: { match: string; found: string[]; kept: string[]; note: string }[];
       comboCatalog?: { id: number; name: string; outcomes: string[]; offeredByBookmaker: number }[];
+      /** „Skeniraj oba“: ID drugog skeniranja iz istog prolaza; sharedRequests = zahtevi su upisani na Osnovnom. */
+      pairedWith?: string;
+      sharedRequests?: boolean;
+      kontra?: KontraDiagnostics;
+      kontraLog?: { match: string; odds: string; decision: string }[];
     },
   };
 }
@@ -53,6 +60,8 @@ export async function getScanSelections(scanId: string) {
     marketType: r.marketType as MarketTypeCode,
     label: MARKET_LABELS[r.marketType as MarketTypeCode],
     odds: r.odds.toNumber(),
+    /** Kontra: kvota okidača (2+ ili 0–3) */
+    triggerOdds: r.triggerOdds?.toNumber() ?? null,
     oddsTimestamp: r.oddsTimestamp.toISOString(),
     source: r.source,
     isDemo: r.isDemo,

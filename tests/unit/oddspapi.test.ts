@@ -50,7 +50,38 @@ describe("OddsPapi – mapiranje tržišta", () => {
       AWAY: [{ marketId: "101", outcomeId: "103" }],
       OVER_1_5: [{ marketId: "1010", outcomeId: "1010" }],
       UNDER_3_5: [{ marketId: "1014", outcomeId: "1015" }],
+      // Kontra robot: suprotni ishodi istih tržišta
+      UNDER_1_5: [{ marketId: "1010", outcomeId: "1011" }],
+      OVER_3_5: [{ marketId: "1014", outcomeId: "1014" }],
     });
+  });
+
+  it("Kontra: šifre 108/109 (0–1) i 1012/1012 (4+) iz kataloga, i kvote iz istog odgovora", () => {
+    const cat: OddsPapiMarket[] = [
+      { marketId: 108, marketName: "Over Under Full Time", marketType: "totals", period: "fulltime", handicap: 1.5, playerProp: false, sportId: 10,
+        outcomes: [{ outcomeId: 108, outcomeName: "Over" }, { outcomeId: 109, outcomeName: "Under" }] },
+      { marketId: 1012, marketName: "Over Under Full Time", marketType: "totals", period: "fulltime", handicap: 3.5, playerProp: false, sportId: 10,
+        outcomes: [{ outcomeId: 1012, outcomeName: "Over" }, { outcomeId: 1013, outcomeName: "Under" }] },
+    ];
+    const map = resolveOutcomeMap(cat);
+    expect(map.OVER_1_5).toEqual([{ marketId: "108", outcomeId: "108" }]);
+    expect(map.UNDER_1_5).toEqual([{ marketId: "108", outcomeId: "109" }]);
+    expect(map.UNDER_3_5).toEqual([{ marketId: "1012", outcomeId: "1013" }]);
+    expect(map.OVER_3_5).toEqual([{ marketId: "1012", outcomeId: "1012" }]);
+    const f = fixture("k", 1);
+    f.bookmakerOdds = { "admiralbet.rs": { markets: {
+      "108": { outcomes: { "108": price(1.2), "109": price(4.2) } },
+      "1012": { outcomes: { "1012": price(3.6), "1013": price(1.45) } },
+    } } };
+    expect(Object.fromEntries(Object.entries(extractOdds(f, map, "admiralbet.rs")).map(([k, v]) => [k, v!.price])))
+      .toEqual({ OVER_1_5: 1.2, UNDER_1_5: 4.2, OVER_3_5: 3.6, UNDER_3_5: 1.45 });
+  });
+
+  it("Kontra: opsezi golova „0–1“ i „4+“", () => {
+    const map = resolveOutcomeMap([{ marketId: 777, marketName: "Total Goals Range", marketType: "range", period: "fulltime", handicap: 0, playerProp: false, sportId: 10,
+      outcomes: [{ outcomeId: 1, outcomeName: "0-1" }, { outcomeId: 2, outcomeName: "2-3" }, { outcomeId: 3, outcomeName: "4+" }] }]);
+    expect(map.UNDER_1_5).toEqual([{ marketId: "777", outcomeId: "1" }]);
+    expect(map.OVER_3_5).toEqual([{ marketId: "777", outcomeId: "3" }]);
   });
 
   it("više kandidata za isto tržište: uzima onaj koji Soccerbet ima", () => {

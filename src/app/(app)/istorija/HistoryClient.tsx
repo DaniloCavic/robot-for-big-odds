@@ -1,5 +1,6 @@
 "use client";
 
+import { StrategyBadge } from "../robot/RobotClient";
 import { useState } from "react";
 import { Card, EmptyState } from "@/components/ui";
 import type { ScanStatusDto, SelectionDto } from "@/lib/robot/scans";
@@ -92,7 +93,7 @@ function ScanRow({ s, open, onToggle, selections }: { s: ScanStatusDto; open: bo
       <tr className="cursor-pointer border-b border-line/50 hover:bg-panel-2/60" onClick={onToggle}>
         <td className="py-2 pr-3 whitespace-nowrap">{open ? "▾" : "▸"} {fmt.format(new Date(s.startedAt))}</td>
         <td className="py-2 pr-3">{s.periodLabel}</td>
-        <td className="py-2 pr-3">{s.providerName}{s.isDemo && <span className="ml-1 rounded bg-live/20 px-1 text-[10px] font-bold text-live">DEMO</span>}</td>
+        <td className="py-2 pr-3">{s.providerName} <StrategyBadge strategy={s.strategy} />{s.isDemo && <span className="ml-1 rounded bg-live/20 px-1 text-[10px] font-bold text-live">DEMO</span>}</td>
         <td className="py-2 pr-3"><span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[s.status][1]}`}>{STATUS[s.status][0]}</span></td>
         <td className="py-2 pr-3 tabular-nums">{s.fixturesScanned}{s.fixturesTotal != null ? ` / ${s.fixturesTotal}` : ""}</td>
         <td className="py-2 pr-3 tabular-nums">{s.fixturesExcluded}</td>
