@@ -5,7 +5,7 @@ import { saveSettingsAction, type SettingsState } from "./actions";
 
 const input = "w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 tabular-nums outline-none focus:border-accent focus:ring-2 focus:ring-accent/30";
 
-export function SettingsForm({ maxOdds, stake, maxRequests, checkMinutes, opChecks, goalsPair, combine, fallback, afCap }: { maxOdds: number; stake: number; maxRequests: number; checkMinutes: number; opChecks: number; goalsPair: boolean; combine: boolean; fallback: string; afCap: number }) {
+export function SettingsForm({ maxOdds, stake, maxRequests, checkMinutes, opChecks, goalsPair, combine, fallback, afCap, kontraTrigger = 1.3, kontraFavorite = 1.3 }: { maxOdds: number; stake: number; maxRequests: number; checkMinutes: number; opChecks: number; goalsPair: boolean; combine: boolean; fallback: string; afCap: number; kontraTrigger?: number; kontraFavorite?: number }) {
   const [state, action, pending] = useActionState<SettingsState, FormData>(saveSettingsAction, {});
   return (
     <form action={action} className="space-y-5">
@@ -63,6 +63,22 @@ export function SettingsForm({ maxOdds, stake, maxRequests, checkMinutes, opChec
           </span>
         </span>
       </label>
+      <fieldset className="rounded-xl border border-pending/40 p-4" data-testid="kontra-settings">
+        <legend className="px-1 text-sm font-semibold"><span className="rounded-md bg-pending/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-pending">KONTRA</span> Kontra robot</legend>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div>
+            <label htmlFor="kontraTriggerMax" className="mb-1.5 block text-sm text-muted">Prag okidača (2+ ili 0–3)</label>
+            <input id="kontraTriggerMax" name="kontraTriggerMax" inputMode="decimal" defaultValue={kontraTrigger.toFixed(2)} className={input} />
+            <p className="mt-1.5 text-xs text-muted">Kad je 2+ (ili 0–3) do ove kvote, igra se 0–1 (ili 4+). Podrazumevano 1.30 – 1.30 ulazi, 1.31 ne.</p>
+          </div>
+          <div>
+            <label htmlFor="kontraFavoriteMax" className="mb-1.5 block text-sm text-muted">Prag favorita 1/2</label>
+            <input id="kontraFavoriteMax" name="kontraFavoriteMax" inputMode="decimal" defaultValue={kontraFavorite.toFixed(2)} className={input} />
+            <p className="mt-1.5 text-xs text-muted">Ako je 1 ili 2 do ove kvote, utakmica se preskače. Podrazumevano 1.30.</p>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-muted">Ulog je isti kao kod osnovnog robota. Pragovi važe za nova skeniranja.</p>
+      </fieldset>
       {state.error && <p role="alert" className="rounded-lg bg-lost/10 px-3 py-2 text-sm text-lost">{state.error}</p>}
       {state.ok && <p role="status" className="rounded-lg bg-won/10 px-3 py-2 text-sm text-won">Sačuvano.</p>}
       <button type="submit" disabled={pending} className="rounded-xl bg-accent px-5 py-2.5 font-semibold text-bg hover:bg-accent-strong disabled:opacity-60">

@@ -106,3 +106,23 @@ describe("Obračun kontra tipova kroz postojeći tracker", () => {
     expect(money(by("Everton", "OVER_3_5"))).toEqual(["WON", 2850, 1850]);
   });
 });
+
+describe("Statistika odvaja Osnovni i Kontra", () => {
+  it("stari (podrazumevani) filteri su Osnovni; Kontra ima svoje redove sa kvotom okidača; Sve = zbir", async () => {
+    const { loadStatRows } = await import("@/lib/stats/load");
+    const { computeKontraStats } = await import("@/lib/stats/compute");
+    const o = await createFilterSet(db, { name: "Stari", userId: null, stake: 1000 }); // kao filter napravljen pre Kontra robota
+    const k = await createFilterSet(db, { name: "K", userId: null, stake: 1000, strategy: "KONTRA" });
+    const m = await match("A", "B");
+    await add(o, (await sel(m.id, "OVER_1_5", 1.2)).id);
+    await add(k, (await sel(m.id, "UNDER_1_5", 4.2)).id);
+    const q = { scope: "all" as const, includeDemo: true };
+    const osn = await loadStatRows({ ...q }); // podrazumevano Osnovni
+    const kon = await loadStatRows({ ...q, strategy: "KONTRA" });
+    const sve = await loadStatRows({ ...q, strategy: "SVE" });
+    expect(osn.map((r) => r.marketType)).toEqual(["OVER_1_5"]);
+    expect(kon.map((r) => [r.marketType, r.triggerOdds, r.strategy])).toEqual([["UNDER_1_5", 1.2, "KONTRA"]]);
+    expect(sve).toHaveLength(2);
+    expect(computeKontraStats(kon).byTrigger.find((b) => b.key === "1.11-1.20")!.total).toBe(1);
+  });
+});

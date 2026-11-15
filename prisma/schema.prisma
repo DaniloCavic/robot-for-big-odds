@@ -57,6 +57,10 @@ model Settings {
   combineResultGoals         Boolean  @default(true)
   /// Šta kad izvor nema kvotu spojenog tipa: SKIP = preskoči utakmicu, WINNER_ONLY = igraj samo 1/2, BOTH_SINGLE = igraj oba tipa odvojeno
   comboFallback              String   @default("WINNER_ONLY")
+  /// Kontra robot: okidač = 2+ ili 0–3 sa kvotom do ovog praga (uključujući)
+  kontraTriggerMax           Decimal  @default(1.30) @db.Decimal(4, 2)
+  /// Kontra robot: utakmica se preskače ako je 1 ili 2 do ovog praga (uključujući)
+  kontraFavoriteMax          Decimal  @default(1.30) @db.Decimal(4, 2)
   updatedAt                  DateTime @updatedAt
 }
 

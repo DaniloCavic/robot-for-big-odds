@@ -17,6 +17,10 @@ export type StatRow = {
   match: string;
   home: number | null;
   away: number | null;
+  /** OSNOVNI / KONTRA (filter kome tip pripada); stariji zapisi bez polja = OSNOVNI */
+  strategy?: string;
+  /** Kontra: kvota okidača (2+ za 0–1, 0–3 za 4+) */
+  triggerOdds?: number | null;
 };
 
 export type Metrics = {
@@ -69,16 +73,19 @@ export function metrics(rows: StatRow[]): Metrics {
   };
 }
 
-export const TYPE_ORDER = ["HOME", "AWAY", "OVER_1_5", "UNDER_3_5", "HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5", "DRAW"] as const;
+export const TYPE_ORDER = ["HOME", "AWAY", "OVER_1_5", "UNDER_3_5", "HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5", "UNDER_1_5", "OVER_3_5", "DRAW"] as const;
 export const TYPE_LABEL: Record<string, string> = {
   HOME: "1", AWAY: "2", OVER_1_5: "2+", UNDER_3_5: "0–3", DRAW: "X",
   HOME_OVER_1_5: "1&2+", HOME_UNDER_3_5: "1&0–3", AWAY_OVER_1_5: "2&2+", AWAY_UNDER_3_5: "2&0–3",
+  UNDER_1_5: "0–1", OVER_3_5: "4+",
 };
-const OPTIONAL_TYPES = new Set(["DRAW", "HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5"]);
+const OPTIONAL_TYPES = new Set(["DRAW", "HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5", "UNDER_1_5", "OVER_3_5"]);
+const KONTRA_ONLY = new Set(["UNDER_1_5", "OVER_3_5"]);
 export const GROUPS = [
   { key: "result", label: "Konačan ishod (1, 2)", types: ["HOME", "AWAY", "DRAW"] },
   { key: "goals", label: "Golovi (2+, 0–3)", types: ["OVER_1_5", "UNDER_3_5"] },
   { key: "combo", label: "Spojeni (1&2+, 1&0–3, 2&2+, 2&0–3)", types: ["HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5"] },
+  { key: "kontra", label: "Kontra (0–1, 4+)", types: ["UNDER_1_5", "OVER_3_5"] },
 ];
 
 export const ODDS_BUCKETS = [
@@ -131,10 +138,11 @@ function groupBy<T>(rows: T[], key: (r: T) => string | null) {
 export function computeStats(rows: StatRow[], granularity: Granularity = "day") {
   const overall = metrics(rows);
   const byType = TYPE_ORDER.map((t) => ({ key: t, label: TYPE_LABEL[t], ...metrics(rows.filter((r) => r.marketType === t)) })).filter((x) => x.total > 0 || !OPTIONAL_TYPES.has(x.key));
-  const byGroup = GROUPS.map((g) => ({ key: g.key, label: g.label, ...metrics(rows.filter((r) => g.types.includes(r.marketType))) })).filter((g) => g.total > 0 || g.key !== "combo");
+  const byGroup = GROUPS.map((g) => ({ key: g.key, label: g.label, ...metrics(rows.filter((r) => g.types.includes(r.marketType))) })).filter((g) => g.total > 0 || (g.key !== "combo" && g.key !== "kontra"));
   const byOdds = ODDS_BUCKETS.map((b) => ({ key: b.key, label: b.key.replace("-", "–"), ...metrics(rows.filter((r) => bucketOf(r.odds, ODDS_BUCKETS) === b.key)) }));
   const bySpecOdds = SPEC_BUCKETS.map((b) => ({ key: b.key, label: b.key.replace("-", "–"), ...metrics(rows.filter((r) => bucketOf(r.odds, SPEC_BUCKETS) === b.key)) }));
-  const matrix = TYPE_ORDER.filter((t) => !OPTIONAL_TYPES.has(t) || rows.some((r) => r.marketType === t)).map((t) => ({
+  // tip × kvota (opsezi 1.01–1.30) nema smisla za kontra tipove (kvote 2–6) – oni imaju svoju tabelu po kvoti okidača
+  const matrix = TYPE_ORDER.filter((t) => !KONTRA_ONLY.has(t) && (!OPTIONAL_TYPES.has(t) || rows.some((r) => r.marketType === t))).map((t) => ({
     key: t, label: TYPE_LABEL[t],
     cells: ODDS_BUCKETS.map((b) => {
       const m = metrics(rows.filter((r) => r.marketType === t && bucketOf(r.odds, ODDS_BUCKETS) === b.key));
@@ -181,6 +189,9 @@ export function computeStrategies(rows: StatRow[]) {
     { key: "under", label: "Samo 0–3", f: (r) => r.marketType === "UNDER_3_5" },
     { key: "low", label: "Pojedinačni, kvote 1.01–1.15", f: (r) => singles.includes(r.marketType) && r.odds <= 1.15 + 1e-9 },
     { key: "high", label: "Pojedinačni, kvote 1.16–1.30", f: (r) => singles.includes(r.marketType) && r.odds > 1.15 + 1e-9 },
+    { key: "kontra", label: "Kontra (0–1, 4+)", f: (r) => KONTRA_ONLY.has(r.marketType) },
+    { key: "kontra-under", label: "Samo 0–1", f: (r) => r.marketType === "UNDER_1_5" },
+    { key: "kontra-over", label: "Samo 4+", f: (r) => r.marketType === "OVER_3_5" },
   ];
   return list.map((s) => ({ key: s.key, label: s.label, ...metrics(rows.filter(s.f)) }));
 }
@@ -234,3 +245,56 @@ export function computeCandidateStats(cands: CandidateRow[], stake = 1000) {
   };
 }
 export type CandidateStats = ReturnType<typeof computeCandidateStats>;
+
+// ---------------------------------------------------------------- Kontra robot
+
+export const KONTRA_TRIGGER_OF: Record<string, { type: string; label: string }> = {
+  UNDER_1_5: { type: "OVER_1_5", label: "2+" },
+  OVER_3_5: { type: "UNDER_3_5", label: "0–3" },
+};
+/** Opsezi kvote kontra tipa (kvote su uglavnom 2–6). */
+export const KONTRA_ODDS_BUCKETS = [
+  { key: "do-2.49", label: "do 2.49", from: 1.01, to: 2.49 },
+  { key: "2.50-3.49", label: "2.50–3.49", from: 2.5, to: 3.49 },
+  { key: "3.50-4.49", label: "3.50–4.49", from: 3.5, to: 4.49 },
+  { key: "4.50-5.99", label: "4.50–5.99", from: 4.5, to: 5.99 },
+  { key: "6+", label: "6.00+", from: 6, to: 1000 },
+];
+
+/**
+ * Šta bi osnovni tip (okidač) na istoj utakmici doneo – isti ulog, po kvoti okidača.
+ * 0–1 i 2+ su tačne suprotnosti (isto 4+ i 0–3): kad kontra prođe, osnovni pada i obrnuto. VOID ostaje VOID.
+ */
+export function mirrorRow(r: StatRow): StatRow | null {
+  const trig = KONTRA_TRIGGER_OF[r.marketType];
+  if (!trig || r.triggerOdds == null) return null;
+  const status = r.status === "WON" ? "LOST" : r.status === "LOST" ? "WON" : r.status;
+  const gross = status === "WON" ? r2(r.stake * r.triggerOdds) : status === "LOST" ? 0 : status === "VOID" ? r.stake : null;
+  return { ...r, marketType: trig.type, odds: r.triggerOdds, status, gross, net: gross == null ? null : r2(gross - r.stake) };
+}
+
+/** Statistika Kontra robota: po tipu, po opsegu kvote okidača, po kvoti kontra tipa i poređenje sa osnovnim tipom. */
+export function computeKontraStats(all: StatRow[]) {
+  const rows = all.filter((r) => KONTRA_ONLY.has(r.marketType));
+  const types = ["UNDER_1_5", "OVER_3_5"];
+  const byType = types.map((t) => ({ key: t, label: TYPE_LABEL[t], ...metrics(rows.filter((r) => r.marketType === t)) }));
+  const byTrigger = SPEC_BUCKETS.map((b) => {
+    const inB = rows.filter((r) => r.triggerOdds != null && bucketOf(r.triggerOdds, SPEC_BUCKETS) === b.key);
+    return {
+      key: b.key, label: b.key.replace("-", "–"), ...metrics(inB),
+      byType: types.map((t) => ({ key: t, label: TYPE_LABEL[t], ...metrics(inB.filter((r) => r.marketType === t)) })),
+    };
+  });
+  const byOdds = KONTRA_ODDS_BUCKETS.map((b) => ({ key: b.key, label: b.label, ...metrics(rows.filter((r) => { const o = Math.round(r.odds * 100) / 100; return o >= b.from - 1e-9 && o <= b.to + 1e-9; })) }));
+  const mirrored = rows.map(mirrorRow).filter((x): x is StatRow => !!x);
+  const comparison = [
+    { key: "kontra", label: "Kontra (0–1, 4+)", ...metrics(rows.filter((r) => r.triggerOdds != null)) },
+    { key: "osnovni", label: "Osnovni tip na istim utakmicama (2+, 0–3)", ...metrics(mirrored) },
+    ...types.flatMap((t) => [
+      { key: `kontra-${t}`, label: `Kontra ${TYPE_LABEL[t]}`, ...metrics(rows.filter((r) => r.marketType === t && r.triggerOdds != null)) },
+      { key: `osnovni-${t}`, label: `Osnovni ${KONTRA_TRIGGER_OF[t].label} (umesto ${TYPE_LABEL[t]})`, ...metrics(mirrored.filter((r) => r.marketType === KONTRA_TRIGGER_OF[t].type)) },
+    ]),
+  ];
+  return { total: rows.length, overall: metrics(rows), byType, byTrigger, byOdds, comparison };
+}
+export type KontraStats = ReturnType<typeof computeKontraStats>;

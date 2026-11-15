@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Card, EmptyState } from "@/components/ui";
-import { TYPE_LABEL, type CandidateStats, type Metrics, type Stats as BaseStats } from "@/lib/stats/compute";
+import { TYPE_LABEL, type CandidateStats, type KontraStats, type Metrics, type Stats as BaseStats } from "@/lib/stats/compute";
 
-type Stats = BaseStats & { strategies: (Metrics & { key: string; label: string })[]; candidates: CandidateStats };
+type Stats = BaseStats & { strategies: (Metrics & { key: string; label: string })[]; candidates: CandidateStats; kontra: KontraStats | null };
+type Strategy = "OSNOVNI" | "KONTRA" | "SVE";
+const STRATEGY_TABS: [Strategy, string][] = [["OSNOVNI", "Osnovni"], ["KONTRA", "Kontra"], ["SVE", "Sve"]];
 import { CumulativeLine, WonLostColumns, type PeriodPoint } from "./charts";
 
 const TZ = "Europe/Belgrade";
@@ -41,7 +43,13 @@ function labelFor(key: string, g: string) {
   return g === "week" ? `od ${d}.${m}.` : `${d}.${m}.`;
 }
 
-export function StatsClient({ sets }: { sets: { id: string; name: string; deleted: boolean }[] }) {
+export function StatsClient({ sets }: { sets: { id: string; name: string; deleted: boolean; strategy?: "OSNOVNI" | "KONTRA" }[] }) {
+  const [strategy, setStrategyState] = useState<Strategy>("OSNOVNI");
+  useEffect(() => {
+    try { const s = localStorage.getItem("fos.stats.strategy"); if (s === "OSNOVNI" || s === "KONTRA" || s === "SVE") setStrategyState(s); } catch {}
+  }, []);
+  const setStrategy = (s: Strategy) => { setStrategyState(s); setFilterSet(""); try { localStorage.setItem("fos.stats.strategy", s); } catch {} };
+  const visibleSets = sets.filter((s) => strategy === "SVE" || (s.strategy ?? "OSNOVNI") === strategy);
   const [preset, setPreset] = useState<Preset>("30");
   const [custom, setCustom] = useState({ from: shift(todayYmd(), -6), to: todayYmd() });
   const [filterSet, setFilterSet] = useState("");
@@ -54,13 +62,16 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
 
   const range = rangeFor(preset, custom);
   useEffect(() => {
-    const qs = new URLSearchParams({ scope, demo: demo ? "1" : "0", granularity });
+    const qs = new URLSearchParams({ scope, demo: demo ? "1" : "0", granularity, strategy });
     if (range.from) qs.set("from", range.from);
     if (range.to) qs.set("to", range.to);
     if (filterSet) qs.set("filterSet", filterSet);
     setLoading(true);
-    fetch(`/api/stats?${qs}`, { cache: "no-store" }).then((r) => r.json()).then(setStats).finally(() => setLoading(false));
-  }, [range.from, range.to, filterSet, scope, demo, granularity]);
+    // stariji (sporiji) odgovor ne sme da pregazi noviji – npr. pri brzom prebacivanju Osnovni/Kontra
+    let current = true;
+    fetch(`/api/stats?${qs}`, { cache: "no-store" }).then((r) => r.json()).then((j) => { if (current) setStats(j); }).finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
+  }, [range.from, range.to, filterSet, scope, demo, granularity, strategy]);
 
   const timeline: PeriodPoint[] = useMemo(() => (stats?.timeline ?? []).map((t) => ({ ...t, label: labelFor(t.key, granularity) })), [stats, granularity]);
   const control = "rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent";
@@ -68,6 +79,17 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
 
   return (
     <div className="space-y-4">
+      {/* Strategija – prekidač na vrhu */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-xl border border-line bg-panel p-1" role="tablist" aria-label="Strategija">
+          {STRATEGY_TABS.map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={strategy === k} onClick={() => setStrategy(k)} data-testid={`stats-strategy-${k}`}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${strategy === k ? (k === "KONTRA" ? "bg-pending/15 text-pending" : "bg-accent/15 text-accent") : "text-muted hover:text-text"}`}>{l}</button>
+          ))}
+        </div>
+        <p className="text-xs text-muted">{strategy === "OSNOVNI" ? "Osnovni robot (1, 2, 2+, 0–3, spojeni) – svi stari podaci su ovde." : strategy === "KONTRA" ? "Kontra robot: 0–1 umesto 2+, 4+ umesto 0–3." : "Osnovni i Kontra zajedno."}</p>
+      </div>
+
       {/* Filteri – jedan red iznad svega */}
       <Card className="!p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -86,7 +108,7 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
           )}
           <select aria-label="Filter" value={filterSet} onChange={(e) => setFilterSet(e.target.value)} className={`${control} ml-auto max-w-56`}>
             <option value="">Svi filteri</option>
-            {sets.map((s) => <option key={s.id} value={s.id}>{s.name}{s.deleted ? " (obrisan)" : ""}</option>)}
+            {visibleSets.map((s) => <option key={s.id} value={s.id}>{s.strategy === "KONTRA" && strategy === "SVE" ? "KONTRA · " : ""}{s.name}{s.deleted ? " (obrisan)" : ""}</option>)}
           </select>
           <select aria-label="Obuhvat" value={scope} onChange={(e) => setScope(e.target.value as "active" | "all")} className={control}>
             <option value="active">Aktivni filteri</option>
@@ -111,6 +133,8 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
             <p className="text-xs text-muted">Nije u obračunu: {o.open} na čekanju/uživo/odloženo{o.review ? `, ${o.review} potrebna provera` : ""} – ne ulaze u prolaznost ni profit.</p>
           )}
           <Insight m={o} />
+
+          {stats.kontra && stats.kontra.total > 0 && <KontraSection k={stats.kontra} />}
 
           <Card>
             <h2 className="mb-1 font-semibold">Strategije</h2>
@@ -149,7 +173,7 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
             </Card>
           )}
 
-          <div className="grid gap-4">
+          {strategy !== "KONTRA" && <div className="grid gap-4">
             <Card>
               <h2 className="mb-1 font-semibold">Golovi ili konačan ishod?</h2>
               <p className="mb-4 text-xs text-muted">Traka = prolaznost, bela crta = prolaznost potrebna za nulu kod tih kvota.</p>
@@ -160,8 +184,9 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
               <p className="mb-4 text-xs text-muted">Koji tip najviše prolazi i da li donosi plus.</p>
               <BarTable rows={stats.byType} testId="by-type" />
             </Card>
-          </div>
+          </div>}
 
+          {strategy !== "KONTRA" && <>
           <Card>
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">Po kvoti – koje kvote najčešće padaju</h2>
@@ -196,6 +221,7 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
               </table>
             </div>
           </Card>
+          </>}
 
           <Card>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -267,6 +293,79 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Kontra robot: tabela po tipu, po kvoti okidača, po kvoti kontra tipa i poređenje sa osnovnim tipom. */
+function KontraSection({ k }: { k: KontraStats }) {
+  const head = ["", "Tipova", "Prošlo / palo", "Prolaznost", "Profit", "ROI", "Pros. kvota", "Break-even"];
+  const Row = ({ r, sub = false }: { r: Metrics & { key: string; label: string }; sub?: boolean }) => (
+    <tr className={`border-t border-line/60 tabular-nums ${sub ? "text-xs text-muted" : ""}`} data-row={r.key}>
+      <td className={`py-2 text-left ${sub ? "pl-5" : "font-semibold"}`}>{r.label}</td>
+      <td className="text-right">{r.total}</td>
+      <td className="text-right"><span className="text-won">{r.won}</span> / <span className="text-lost">{r.lost}</span>{r.void ? <span className="text-muted"> · {r.void}v</span> : null}</td>
+      <td className={`text-right ${r.passRate != null && r.breakEven != null ? (r.passRate >= r.breakEven ? "text-won" : "text-lost") : ""}`}>{pct(r.passRate)}</td>
+      <td className={`text-right font-semibold ${tone(r.net)}`}>{r.won + r.lost + r.void ? signed(r.net) : "—"}</td>
+      <td className={`text-right ${tone(r.net)}`}>{pct(r.roi)}</td>
+      <td className="text-right">{r.avgOdds == null ? "—" : r.avgOdds.toFixed(2)}</td>
+      <td className="text-right">{pct(r.breakEven)}</td>
+    </tr>
+  );
+  const Table = ({ children, testId }: { children: React.ReactNode; testId: string }) => (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[680px] text-sm" data-testid={testId}>
+        <thead className="text-muted"><tr>{head.map((h, i) => <th key={i} className="py-2 text-right font-medium first:text-left">{h}</th>)}</tr></thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+  const decided = k.overall.won + k.overall.lost;
+  const [kon, osn] = k.comparison;
+  return (
+    <div className="space-y-4" data-testid="kontra-stats">
+      <Card>
+        <h2 className="mb-1 flex items-center gap-2 font-semibold"><span className="rounded-md bg-pending/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-pending">KONTRA</span> Po tipu</h2>
+        <p className="mb-4 text-xs text-muted">Break-even = prolaznost potrebna za nulu kod tih kvota (1 / prosečna kvota).</p>
+        <Table testId="kontra-by-type">{k.byType.map((r) => <Row key={r.key} r={r} />)}</Table>
+        {decided < 100 && (
+          <p className="mt-3 rounded-lg border border-line px-3 py-2 text-xs text-muted">
+            Uzorak: <b className="text-text">{decided}</b> obračunatih kontra tipova. Kod kvota oko 3–5 prolazi se 20–30%, pa je niz od 5–10 promašaja normalan –
+            za zaključak treba bar 100–150 tipova.
+          </p>
+        )}
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 font-semibold">Kontra ili osnovni tip na istim utakmicama?</h2>
+        <p className="mb-4 text-xs text-muted">Šta bi doneo osnovni tip (okidač 2+ ili 0–3, po njegovoj kvoti i istom ulogu) na istim utakmicama. 0–1 i 2+ (kao i 4+ i 0–3) su tačne suprotnosti.</p>
+        {kon.won + kon.lost > 0 && (
+          <p className={`mb-3 rounded-lg px-3 py-2 text-sm ${kon.net >= osn.net ? "bg-won/10" : "bg-lost/10"}`} data-testid="kontra-verdict">
+            Kontra: <b className={tone(kon.net)}>{signed(kon.net)}</b> · Osnovni na istim utakmicama: <b className={tone(osn.net)}>{signed(osn.net)}</b> →{" "}
+            <b>{kon.net > osn.net ? "Kontra gubi manje / donosi više" : kon.net < osn.net ? "Osnovni tip gubi manje / donosi više" : "isto"}</b> (razlika {rsd(Math.abs(kon.net - osn.net))}).
+          </p>
+        )}
+        <Table testId="kontra-comparison">{k.comparison.map((r, i) => <Row key={r.key} r={r} sub={i > 1} />)}</Table>
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 font-semibold">Po kvoti okidača</h2>
+        <p className="mb-4 text-xs text-muted">Kvota 2+ (za 0–1) ili 0–3 (za 4+) u trenutku skeniranja – gde kontra najbolje radi.</p>
+        <Table testId="kontra-by-trigger">
+          {k.byTrigger.map((b) => (
+            <Fragment key={b.key}>
+              <Row r={b} />
+              {b.byType.filter((t) => t.total > 0).map((t) => <Row key={`${b.key}-${t.key}`} r={{ ...t, key: `${b.key}-${t.key}` }} sub />)}
+            </Fragment>
+          ))}
+        </Table>
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 font-semibold">Po kvoti kontra tipa</h2>
+        <p className="mb-4 text-xs text-muted">Kvota 0–1 / 4+ po kojoj je tip igran.</p>
+        <Table testId="kontra-by-odds">{k.byOdds.map((r) => <Row key={r.key} r={r} />)}</Table>
+      </Card>
     </div>
   );
 }

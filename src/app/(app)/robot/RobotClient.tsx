@@ -54,8 +54,8 @@ function DemoBadge() {
   return <span className="rounded-md bg-live/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-live">DEMO</span>;
 }
 
-export function RobotClient({ providers: serverProviders, initialScans, today, maxOdds, maxRequests }: {
-  providers: Provider[]; initialScans: ScanStatusDto[]; today: string; maxOdds: number; maxRequests: number;
+export function RobotClient({ providers: serverProviders, initialScans, today, maxOdds, maxRequests, kontraTrigger = 1.3 }: {
+  providers: Provider[]; initialScans: ScanStatusDto[]; today: string; maxOdds: number; maxRequests: number; kontraTrigger?: number;
 }) {
   const [source, setSource] = useState<SourceStatus | null>(null);
   const [touched, setTouched] = useState(false);
@@ -201,7 +201,7 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
                   onClick={() => { setStrategy(key); try { localStorage.setItem("fos.robot.strategy", key); } catch {} }}
                   className={`rounded-xl border px-4 py-2.5 text-left text-sm transition ${strategy === key ? (key === "KONTRA" ? "border-pending/60 bg-pending/10" : "border-accent/60 bg-accent/10") : "border-line hover:border-muted"} disabled:opacity-50`}>
                   <span className={`block font-semibold ${strategy === key ? (key === "KONTRA" ? "text-pending" : "text-accent") : ""}`}>{label}</span>
-                  <span className="block text-xs text-muted">{hint}</span>
+                  <span className="block text-xs text-muted">{key === "KONTRA" ? `Gde je 2+ ili 0–3 do ${kontraTrigger.toFixed(2)} igra 0–1 ili 4+` : hint}</span>
                 </button>
               ))}
             </div>

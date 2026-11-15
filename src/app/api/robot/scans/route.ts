@@ -5,7 +5,6 @@ import { getSettings } from "@/lib/settings-repo";
 import { periodRange, PERIODS, type PeriodKey } from "@/lib/time";
 import { getProvider } from "@/lib/robot/providers";
 import { markStaleScans, runScans } from "@/lib/robot/runner";
-import { KONTRA_DEFAULT_TRIGGER_MAX } from "@/lib/robot/kontra-rules";
 import { getScanStatus } from "@/lib/robot/scans";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +46,7 @@ export async function POST(req: Request) {
     const out = [];
     for (const st of strategies) {
       out.push(await tx.robotScan.create({
-        data: { ...base, strategy: st, maxOddsUsed: st === "KONTRA" ? KONTRA_DEFAULT_TRIGGER_MAX : settings.maxOdds },
+        data: { ...base, strategy: st, maxOddsUsed: st === "KONTRA" ? settings.kontraTriggerMax : settings.maxOdds },
       }));
     }
     // „Oba“: Kontra skeniranje deli zahteve sa Osnovnim (zahtevi se broje samo na Osnovnom)

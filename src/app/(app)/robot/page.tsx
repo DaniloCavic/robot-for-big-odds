@@ -19,6 +19,7 @@ export default async function RobotPage() {
         today={ymdToString(zonedYmd(new Date()))}
         maxOdds={settings.maxOdds}
         maxRequests={settings.maxRequestsPerScan}
+        kontraTrigger={settings.kontraTriggerMax}
       />
     </>
   );

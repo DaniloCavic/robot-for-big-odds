@@ -3,6 +3,13 @@ import { z } from "zod";
 /** Gornja granica kvote koju je korisnik potvrdio (1.30 uključujući 1.30). */
 export const ABSOLUTE_MAX_ODDS = 1.3;
 
+/** Kontra pragovi: veći od 1.00, najviše `max`, dve decimale. */
+const kontraThreshold = (label: string, max: number) => z.coerce
+  .number({ invalid_type_error: `${label} mora biti broj.` })
+  .gt(1, `${label} mora biti veći od 1.00.`)
+  .max(max, `${label} može biti najviše ${max.toFixed(2)}.`)
+  .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-9, { message: `${label} može imati najviše dve decimale.` });
+
 export const settingsSchema = z.object({
   maxOdds: z.coerce
     .number({ invalid_type_error: "Kvota mora biti broj." })
@@ -27,6 +34,8 @@ export const settingsSchema = z.object({
   excludeGoalsPair: z.boolean().default(true),
   combineResultGoals: z.boolean().default(true),
   comboFallback: z.enum(["SKIP", "WINNER_ONLY", "BOTH_SINGLE"]).default("WINNER_ONLY"),
+  kontraTriggerMax: kontraThreshold("Prag okidača", 1.5).default(1.3),
+  kontraFavoriteMax: kontraThreshold("Prag favorita 1/2", 2).default(1.3),
   apiFootballDailyCap: z.coerce.number({ invalid_type_error: "Limit mora biti broj." }).int("Limit mora biti ceo broj.").min(10, "Najmanje 10.").max(7000, "Najviše 7.000 (Pro paket: 7.500 dnevno)."),
   oddsPapiResultChecksPerDay: z.coerce.number({ invalid_type_error: "Limit mora biti broj." }).int("Limit mora biti ceo broj.").min(0, "Limit ne može biti negativan.").max(200, "Limit je najviše 200."),
 });

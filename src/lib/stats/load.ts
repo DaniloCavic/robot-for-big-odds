@@ -10,11 +10,18 @@ export type StatQuery = {
   scope: "active" | "all";
   includeDemo: boolean;
   filterSetId?: string | null;
+  /** OSNOVNI / KONTRA / SVE (podrazumevano OSNOVNI – stari podaci su Osnovni) */
+  strategy?: "OSNOVNI" | "KONTRA" | "SVE";
 };
 
 export async function loadStatRows(q: StatQuery): Promise<StatRow[]> {
+  const strategy = q.strategy ?? "OSNOVNI";
   const where: Prisma.FilterSetSelectionWhereInput = {
-    ...(q.scope === "active" ? { removedAt: null, filterSet: { status: { not: "DELETED" } } } : {}),
+    ...(q.scope === "active" ? { removedAt: null } : {}),
+    filterSet: {
+      ...(q.scope === "active" ? { status: { not: "DELETED" } } : {}),
+      ...(strategy === "SVE" ? {} : { strategy }),
+    },
     ...(q.filterSetId ? { filterSetId: q.filterSetId } : {}),
     marketSelection: { excludedReason: null, ...(q.includeDemo ? {} : { isDemo: false }) },
     trackedSelection: {
@@ -25,7 +32,7 @@ export async function loadStatRows(q: StatQuery): Promise<StatRow[]> {
   };
   const rows = await prisma.filterSetSelection.findMany({
     where,
-    include: { filterSet: { select: { id: true, name: true } }, trackedSelection: { include: { match: true } } },
+    include: { filterSet: { select: { id: true, name: true, strategy: true } }, trackedSelection: { include: { match: true } }, marketSelection: { select: { triggerOdds: true } } },
   });
   return rows.map((r) => ({
     status: r.settlementStatus,
@@ -42,6 +49,8 @@ export async function loadStatRows(q: StatQuery): Promise<StatRow[]> {
     match: `${r.trackedSelection.match.homeTeam} – ${r.trackedSelection.match.awayTeam}`,
     home: r.trackedSelection.finalHomeScore,
     away: r.trackedSelection.finalAwayScore,
+    strategy: r.filterSet.strategy,
+    triggerOdds: r.marketSelection.triggerOdds?.toNumber() ?? null,
   }));
 }
 

@@ -138,11 +138,11 @@ function osnovniProcessor(scan: Scan, provider: OddsProvider, settings: Settings
 }
 
 /** Kontra robot – igra 0–1 umesto 2+ i 4+ umesto 0–3 (pravila u kontra-rules.ts). Spojeni tipovi i ručni unos se ne koriste. */
-function kontraProcessor(scan: Scan, provider: OddsProvider): Processor {
+function kontraProcessor(scan: Scan, provider: OddsProvider, settings: Settings): Processor {
   const scanId = scan.id;
   const kd: KontraDiagnostics = {
     triggerMax: scan.maxOddsUsed.toNumber() || KONTRA_DEFAULT_TRIGGER_MAX,
-    favoriteMax: KONTRA_DEFAULT_FAVORITE_MAX,
+    favoriteMax: settings?.kontraFavoriteMax.toNumber() ?? KONTRA_DEFAULT_FAVORITE_MAX,
     withTrigger: 0, played: 0,
     playedByType: Object.fromEntries(KONTRA_TYPES.map((t) => [t, 0])),
     skips: Object.fromEntries(KONTRA_SKIP_REASONS.map((r) => [r, 0])) as Record<KontraSkipReason, number>,
@@ -218,7 +218,7 @@ export async function runScans(scanIds: string[]): Promise<void> {
     return;
   }
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
-  const processors = scans.map((s) => (s.strategy === "KONTRA" ? kontraProcessor(s, provider) : osnovniProcessor(s, provider, settings)));
+  const processors = scans.map((s) => (s.strategy === "KONTRA" ? kontraProcessor(s, provider, settings) : osnovniProcessor(s, provider, settings)));
 
   const diag: Record<string, unknown> = {};
   let lastStopCheck = 0;

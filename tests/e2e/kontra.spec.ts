@@ -125,7 +125,51 @@ test("Kontra tok: skeniranje → „Dodaj sve“ u Kontra filter → ručni rezu
   await expect(page.getByTestId("filter-summary")).toBeVisible();
   const netText = (await page.getByTestId("filter-net").textContent())!;
   expect(Number(netText.replace(/[^\d,-]/g, "").replace(/\./g, "").replace(",", "."))).toBeCloseTo(expectedNet, 2);
-  // čišćenje: drugi testovi broje ručne ispravke u audit logu
+  // 5) Statistika – prekidač Kontra: prolaz i profit; Osnovni ne sadrži kontra tipove
+  const kontraSettled = await db.filterSetSelection.findMany({
+    where: { removedAt: null, filterSet: { status: { not: "DELETED" }, strategy: "KONTRA" }, settlementStatus: { in: ["WON", "LOST", "VOID"] } },
+  });
+  const kontraNet = Math.round(kontraSettled.reduce((acc, e) => acc + Number(e.netProfit), 0));
+  await page.goto("/statistika");
+  await page.getByTestId("stats-strategy-KONTRA").click();
+  await page.getByLabel("DEMO").check();
+  await expect(page.getByTestId("kontra-stats")).toBeVisible();
+  await expect(page.getByTestId("kpi-net")).toBeVisible();
+  await expect.poll(async () => Number((await page.getByTestId("kpi-net").textContent())!.replace(/[^\d-]/g, ""))).toBe(kontraNet);
+  const typeRow = page.getByTestId("kontra-by-type").locator(`tr[data-row=${t.marketType}]`);
+  await expect(typeRow).toContainText("1 / 0");
+  await expect(page.getByTestId("kontra-comparison")).toBeVisible();
+  await expect(page.getByTestId("kontra-verdict")).toContainText("Osnovni na istim utakmicama");
+  await expect(page.getByTestId("kontra-by-trigger")).toContainText("1.21–1.30");
+  await page.getByTestId("stats-strategy-OSNOVNI").click();
+  await expect(page.getByTestId("kontra-stats")).toHaveCount(0);
+
+  // čišćenje: drugi testovi broje ručne ispravke i aktivne filtere (filter se briše kao dugmetom „Obriši filter“)
   await db.auditLog.deleteMany({ where: { action: "MANUAL_OVERRIDE", reason: "Proveren rezultat – E2E test Kontra" } });
+  await db.filterSet.updateMany({ where: { name }, data: { status: "DELETED" } });
   await db.$disconnect();
+});
+
+test("Podešavanja: Kontra pragovi se čuvaju i proveravaju", async ({ page, isMobile }) => {
+  test.skip(isMobile, "dovoljno na desktopu");
+  await page.goto("/podesavanja");
+  const trig = page.getByLabel("Prag okidača (2+ ili 0–3)");
+  const fav = page.getByLabel("Prag favorita 1/2");
+  await expect(trig).toHaveValue("1.30");
+  await expect(fav).toHaveValue("1.30");
+  await trig.fill("1,60");
+  await page.getByRole("button", { name: "Sačuvaj" }).first().click();
+  await expect(page.getByRole("alert").filter({ hasText: "najviše 1.50" })).toBeVisible();
+  await trig.fill("1,25");
+  await fav.fill("1.40");
+  await page.getByRole("button", { name: "Sačuvaj" }).first().click();
+  await expect(page.getByRole("status").filter({ hasText: "Sačuvano" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Prag okidača (2+ ili 0–3)")).toHaveValue("1.25");
+  await expect(page.getByLabel("Prag favorita 1/2")).toHaveValue("1.40");
+  // vraćanje na podrazumevano
+  await page.getByLabel("Prag okidača (2+ ili 0–3)").fill("1.30");
+  await page.getByLabel("Prag favorita 1/2").fill("1.30");
+  await page.getByRole("button", { name: "Sačuvaj" }).first().click();
+  await expect(page.getByRole("status").filter({ hasText: "Sačuvano" })).toBeVisible();
 });

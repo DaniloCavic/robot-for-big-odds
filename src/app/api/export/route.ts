@@ -41,15 +41,16 @@ export async function GET(req: Request) {
     include: { filterSet: true, trackedSelection: { include: { match: true } }, marketSelection: true },
     orderBy: [{ filterSet: { createdAt: "asc" } }, { addedAt: "asc" }],
   });
-  const header = ["Filter", "Filter obrisan", "Uklonjen iz filtera", "Početak (Beograd)", "Država", "Takmičenje", "Domaćin", "Gost", "Tip", "Kvota", "Ulog", "Status", "Rezultat", "Isplata", "Neto", "Izvor kvote", "Izvor rezultata", "DEMO"];
+  const header = ["Strategija", "Filter", "Filter obrisan", "Uklonjen iz filtera", "Početak (Beograd)", "Država", "Takmičenje", "Domaćin", "Gost", "Tip", "Kvota", "Ulog", "Status", "Rezultat", "Isplata", "Neto", "Izvor kvote", "Izvor rezultata", "DEMO", "Kvota okidača"];
   const fmt = new Intl.DateTimeFormat("sr-Latn-RS", { timeZone: "Europe/Belgrade", dateStyle: "short", timeStyle: "short" });
   const lines = rows.map((r) => {
     const t = r.trackedSelection, m = t.match;
     return [
-      r.filterSet.name, r.filterSet.status === "DELETED" ? "da" : "", r.removedAt ? "da" : "", fmt.format(m.kickoffTime), m.country, m.competition,
+      r.filterSet.strategy === "KONTRA" ? "Kontra" : "Osnovni", r.filterSet.name, r.filterSet.status === "DELETED" ? "da" : "", r.removedAt ? "da" : "", fmt.format(m.kickoffTime), m.country, m.competition,
       m.homeTeam, m.awayTeam, MARKET_LABELS[t.marketType as MarketTypeCode], r.oddsSnapshot.toFixed(2).replace(".", ","), r.stake.toFixed(2).replace(".", ","),
       r.settlementStatus, t.finalHomeScore != null ? `${t.finalHomeScore}:${t.finalAwayScore}` : "", r.grossReturn?.toFixed(2).replace(".", ",") ?? "",
       r.netProfit?.toFixed(2).replace(".", ",") ?? "", r.marketSelection.source, t.resultSource ?? "", r.marketSelection.isDemo ? "da" : "",
+      r.marketSelection.triggerOdds?.toFixed(2).replace(".", ",") ?? "",
     ].map(csvCell).join(";");
   });
   const csv = "﻿" + [header.join(";"), ...lines].join("\r\n");

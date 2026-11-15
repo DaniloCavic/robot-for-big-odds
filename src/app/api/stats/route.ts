@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
-import { computeCandidateStats, computeStats, computeStrategies } from "@/lib/stats/compute";
+import { computeCandidateStats, computeKontraStats, computeStats, computeStrategies } from "@/lib/stats/compute";
 import { loadCandidateRows, loadStatRows } from "@/lib/stats/load";
 import { addDays, parseYmd, zonedMidnight } from "@/lib/time";
 
@@ -13,6 +13,7 @@ const schema = z.object({
   demo: z.enum(["0", "1"]).default("0"),
   filterSet: z.string().optional(),
   granularity: z.enum(["day", "week", "month"]).default("day"),
+  strategy: z.enum(["OSNOVNI", "KONTRA", "SVE"]).default("OSNOVNI"),
 });
 
 export async function GET(req: Request) {
@@ -25,8 +26,12 @@ export async function GET(req: Request) {
   const to = t ? zonedMidnight(addDays(t, 1)) : null;
   const includeDemo = p.data.demo === "1";
   const [rows, cands] = await Promise.all([
-    loadStatRows({ from, to, scope: p.data.scope, includeDemo, filterSetId: p.data.filterSet || null }),
-    loadCandidateRows({ from, to, includeDemo }),
+    loadStatRows({ from, to, scope: p.data.scope, includeDemo, filterSetId: p.data.filterSet || null, strategy: p.data.strategy }),
+    // spojeni tipovi (kandidati) pripadaju samo osnovnom robotu
+    p.data.strategy === "KONTRA" ? Promise.resolve([]) : loadCandidateRows({ from, to, includeDemo }),
   ]);
-  return Response.json({ ...computeStats(rows, p.data.granularity), strategies: computeStrategies(rows), candidates: computeCandidateStats(cands) });
+  return Response.json({
+    ...computeStats(rows, p.data.granularity), strategies: computeStrategies(rows), candidates: computeCandidateStats(cands),
+    kontra: p.data.strategy === "OSNOVNI" ? null : computeKontraStats(rows),
+  });
 }
