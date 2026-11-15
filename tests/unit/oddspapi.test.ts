@@ -147,6 +147,13 @@ describe("OddsPapi – klijent", () => {
     const forb = new OddsPapiClient("k", mockFetch(() => ({ status: 403, body: { code: "RESTRICTED_ACCESS", details: "bookmaker not in plan" } })).fn, 0, noSleep);
     await expect(forb.get("/odds", {})).rejects.toThrow(/SoccerBet RS/);
   });
+
+  it("500 „fetching user data“ (nepoznat ključ) – jasna poruka, bez ponavljanja", async () => {
+    const { fn, calls } = mockFetch(() => ({ status: 500, body: { error: { code: "INTERNAL_ERROR", message: "An error occurred while fetching user data." } } }));
+    const client = new OddsPapiClient("k", fn, 0, noSleep);
+    await expect(client.get("/fixtures", {})).rejects.toThrow(/ne prepoznaje API ključ/);
+    expect(calls).toHaveLength(1);
+  });
 });
 
 describe("OddsPapi – skeniranje", () => {

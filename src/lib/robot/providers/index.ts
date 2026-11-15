@@ -3,7 +3,8 @@ import { demoProvider } from "./demo";
 import { createOddsPapiProvider, ODDSPAPI_BOOKMAKERS, OddsPapiClient } from "./oddspapi";
 
 const KEY_NAMES = ["ODDSPAPI_API_KEY", "ODDSPAPI_KEY", "ODDS_PAPI_API_KEY", "ODDSPAPI"];
-export const oddsPapiKey = () => KEY_NAMES.map((n) => process.env[n]?.trim()).find(Boolean) || null;
+/** Ključ iz promenljive; skidaju se razmaci i navodnici ako su slučajno nalepljeni u Railway Raw Editor. */
+export const oddsPapiKey = () => KEY_NAMES.map((n) => process.env[n]?.trim().replace(/^["']+|["']+$/g, "").trim()).find(Boolean) || null;
 
 /** Stari ID iz prvih skeniranja. */
 const LEGACY: Record<string, string> = { "oddspapi-soccerbet": "oddspapi:soccerbet.rs" };

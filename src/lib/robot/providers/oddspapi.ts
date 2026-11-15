@@ -197,6 +197,10 @@ export class OddsPapiClient {
       const code = err.code ?? `HTTP_${res.status}`;
       if (code === "REQUEST_LIMIT_EXCEEDED") throw new ProviderError("Potrošena je mesečna kvota OddsPapi zahteva. Kvota se obnavlja 1. u mesecu ili uz plaćeni paket.", code);
       if (res.status === 401) throw new ProviderError("OddsPapi API ključ nije ispravan. Proverite ODDSPAPI_API_KEY na Railway-u.", code);
+      // OddsPapi vraća 500 „fetching user data“ kada ne nađe nalog za ključ – ponavljanje samo troši zahteve
+      if (res.status === 500 && /user data/i.test(`${err.details ?? ""} ${err.message ?? ""}`)) {
+        throw new ProviderError("OddsPapi ne prepoznaje API ključ (greška „fetching user data“). Proverite da je ODDSPAPI_API_KEY na Railway-u tačno isti kao na starom serveru – bez navodnika i razmaka.", code);
+      }
       if (res.status === 403) throw new ProviderError(`OddsPapi odbija pristup (${err.details ?? err.message ?? code}). Vaš paket možda ne uključuje SoccerBet RS.`, code);
       if ((res.status === 429 || res.status >= 500) && attempt < 3) {
         await this.sleepImpl(2000 * 2 ** attempt);

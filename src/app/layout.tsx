@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Football Odds Scanner",
+  title: "Football Big Odds Scanner",
   description: "Skeniranje kvota, filter i praćenje prolaznosti fudbalskih tipova.",
 };
 
