@@ -284,7 +284,7 @@ describe("OddsPapi – 2+ i 0–3 u svim oblicima", () => {
 });
 
 describe("OddsPapi – poređenje kladionica", () => {
-  it("jedan /odds zahtev za sve kladionice, MaxBet bez 2+ (samo 0–1)", async () => {
+  it("jedan /odds zahtev za sve kladionice, MaxBet bez 2+ (ima 1 i 0–1)", async () => {
     const calls: URL[] = [];
     const fn = (async (input: URL | RequestInfo) => {
       const url = new URL(String(input));
@@ -302,7 +302,7 @@ describe("OddsPapi – poređenje kladionica", () => {
     expect(odds).toHaveLength(1);
     expect(odds[0].searchParams.get("bookmakers")).toContain("maxbet.rs");
     const maxbet = r.bookmakers.find((b) => b.slug === "maxbet.rs")!;
-    expect(maxbet.odds).toEqual({ HOME: 1.2 });
+    expect(maxbet.odds).toEqual({ HOME: 1.2, UNDER_1_5: 3.7 }); // poređenje prikazuje i 0–1 / 4+ (skener velikih kvota)
     expect(r.bookmakers.find((b) => b.slug === "mozzartbet")!.odds.OVER_1_5).toBe(1.22);
     expect(r.bookmakers.find((b) => b.slug === "soccerbet.rs")!.present).toBe(false);
   });

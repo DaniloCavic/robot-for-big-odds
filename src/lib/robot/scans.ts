@@ -74,7 +74,8 @@ export async function getScanSelections(scanId: string) {
 }
 export type SelectionDto = Awaited<ReturnType<typeof getScanSelections>>[number];
 
+/** Poslednja skeniranja skenera velikih kvota (Kontra). Stara skeniranja osnovnog robota se ne prikazuju. */
 export async function recentScans(limit = 5) {
-  const ids = await prisma.robotScan.findMany({ orderBy: { startedAt: "desc" }, take: limit, select: { id: true } });
+  const ids = await prisma.robotScan.findMany({ where: { strategy: "KONTRA" }, orderBy: { startedAt: "desc" }, take: limit, select: { id: true } });
   return (await Promise.all(ids.map((i) => getScanStatus(i.id)))).filter(Boolean) as ScanStatusDto[];
 }

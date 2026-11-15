@@ -101,8 +101,11 @@ test("statistika i istorija: brojke se slažu sa bazom", async ({ page, isMobile
   expect(Number(txt.replace(/[^\d-]/g, ""))).toBe(net);
   await expect(page.getByTestId("kpis")).toContainText(`${won} / ${lost}`);
   await expect(page.getByTestId("insight")).toContainText("prolaznosti da bi se bilo na nuli");
-  for (const id of ["by-group", "by-type", "by-odds", "matrix", "by-filter"]) await expect(page.getByTestId(id)).toBeVisible();
-  await expect(page.getByTestId("by-group")).toContainText("Golovi (2+, 0–3)");
+  for (const id of ["kontra-by-type", "kontra-by-trigger", "kontra-by-odds", "by-filter"]) await expect(page.getByTestId(id)).toBeVisible();
+  await expect(page.getByTestId("kontra-by-trigger")).toContainText("1.21–1.30");
+  // statistika 2+ / 0–3 se na ovom sajtu ne računa
+  await expect(page.getByTestId("by-group")).toHaveCount(0);
+  await expect(page.getByTestId("matrix")).toHaveCount(0);
 
   // bez DEMO podataka statistika je prazna (sve je DEMO u e2e bazi)
   await page.getByLabel("DEMO").uncheck();

@@ -12,22 +12,23 @@ export async function saveSettingsAction(_prev: SettingsState, formData: FormDat
   const user = await requireUser();
   if (user.role !== "ADMIN") return { error: "Samo administrator može da menja podešavanja." };
 
+  // skener velikih kvota: pravila osnovnog robota (maks. kvota, 2+ i 0–3, spojeni tipovi) se ne menjaju ovde
+  const before = await getSettings();
   const parsed = settingsSchema.safeParse({
-    maxOdds: normalizeDecimal(formData.get("maxOdds")),
+    maxOdds: before.maxOdds,
     stakePerSelection: normalizeDecimal(formData.get("stakePerSelection")),
     maxRequestsPerScan: normalizeDecimal(formData.get("maxRequestsPerScan")),
     resultCheckMinutes: normalizeDecimal(formData.get("resultCheckMinutes")),
     apiFootballDailyCap: normalizeDecimal(formData.get("apiFootballDailyCap")),
     oddsPapiResultChecksPerDay: normalizeDecimal(formData.get("oddsPapiResultChecksPerDay")),
-    excludeGoalsPair: formData.get("excludeGoalsPair") === "on",
-    combineResultGoals: formData.get("combineResultGoals") === "on",
-    comboFallback: String(formData.get("comboFallback") ?? "WINNER_ONLY"),
+    excludeGoalsPair: before.excludeGoalsPair,
+    combineResultGoals: before.combineResultGoals,
+    comboFallback: before.comboFallback,
     kontraTriggerMax: normalizeDecimal(formData.get("kontraTriggerMax")) || undefined,
     kontraFavoriteMax: normalizeDecimal(formData.get("kontraFavoriteMax")) || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const before = await getSettings();
   const next = parsed.data;
   const keys = ["maxOdds", "stakePerSelection", "maxRequestsPerScan", "resultCheckMinutes", "apiFootballDailyCap", "oddsPapiResultChecksPerDay", "excludeGoalsPair", "combineResultGoals", "comboFallback", "kontraTriggerMax", "kontraFavoriteMax"] as const;
   if (keys.every((k) => before[k] === next[k])) return { ok: true };

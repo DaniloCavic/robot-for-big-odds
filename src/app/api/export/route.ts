@@ -38,6 +38,7 @@ export async function GET(req: Request) {
   }
 
   const rows = await prisma.filterSetSelection.findMany({
+    where: { filterSet: { strategy: "KONTRA" } },
     include: { filterSet: true, trackedSelection: { include: { match: true } }, marketSelection: true },
     orderBy: [{ filterSet: { createdAt: "asc" } }, { addedAt: "asc" }],
   });

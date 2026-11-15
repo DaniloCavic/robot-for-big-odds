@@ -12,14 +12,14 @@ export default async function RobotPage() {
   const providers = availableProviders();
   return (
     <>
-      <PageHeader title="Robot" subtitle={`Ručno skeniranje ponude: samo pravi fudbal, tipovi 1, 2, 2+, 0–3, kvote do ${settings.maxOdds.toFixed(2)}.`} />
+      <PageHeader title="Robot" subtitle="Skener velikih kvota: samo pravi fudbal, tipovi 0–1 i 4+ po kvoti kladionice." />
       <RobotClient
         providers={providers}
         initialScans={scans}
         today={ymdToString(zonedYmd(new Date()))}
-        maxOdds={settings.maxOdds}
         maxRequests={settings.maxRequestsPerScan}
         kontraTrigger={settings.kontraTriggerMax}
+        kontraFavorite={settings.kontraFavoriteMax}
       />
     </>
   );

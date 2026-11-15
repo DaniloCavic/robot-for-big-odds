@@ -248,10 +248,6 @@ export type CandidateStats = ReturnType<typeof computeCandidateStats>;
 
 // ---------------------------------------------------------------- Kontra robot
 
-export const KONTRA_TRIGGER_OF: Record<string, { type: string; label: string }> = {
-  UNDER_1_5: { type: "OVER_1_5", label: "2+" },
-  OVER_3_5: { type: "UNDER_3_5", label: "0–3" },
-};
 /** Opsezi kvote kontra tipa (kvote su uglavnom 2–6). */
 export const KONTRA_ODDS_BUCKETS = [
   { key: "do-2.49", label: "do 2.49", from: 1.01, to: 2.49 },
@@ -261,19 +257,7 @@ export const KONTRA_ODDS_BUCKETS = [
   { key: "6+", label: "6.00+", from: 6, to: 1000 },
 ];
 
-/**
- * Šta bi osnovni tip (okidač) na istoj utakmici doneo – isti ulog, po kvoti okidača.
- * 0–1 i 2+ su tačne suprotnosti (isto 4+ i 0–3): kad kontra prođe, osnovni pada i obrnuto. VOID ostaje VOID.
- */
-export function mirrorRow(r: StatRow): StatRow | null {
-  const trig = KONTRA_TRIGGER_OF[r.marketType];
-  if (!trig || r.triggerOdds == null) return null;
-  const status = r.status === "WON" ? "LOST" : r.status === "LOST" ? "WON" : r.status;
-  const gross = status === "WON" ? r2(r.stake * r.triggerOdds) : status === "LOST" ? 0 : status === "VOID" ? r.stake : null;
-  return { ...r, marketType: trig.type, odds: r.triggerOdds, status, gross, net: gross == null ? null : r2(gross - r.stake) };
-}
-
-/** Statistika Kontra robota: po tipu, po opsegu kvote okidača, po kvoti kontra tipa i poređenje sa osnovnim tipom. */
+/** Statistika skenera velikih kvota (0–1, 4+): po tipu, po opsegu kvote okidača i po kvoti tipa. */
 export function computeKontraStats(all: StatRow[]) {
   const rows = all.filter((r) => KONTRA_ONLY.has(r.marketType));
   const types = ["UNDER_1_5", "OVER_3_5"];
@@ -286,15 +270,6 @@ export function computeKontraStats(all: StatRow[]) {
     };
   });
   const byOdds = KONTRA_ODDS_BUCKETS.map((b) => ({ key: b.key, label: b.label, ...metrics(rows.filter((r) => { const o = Math.round(r.odds * 100) / 100; return o >= b.from - 1e-9 && o <= b.to + 1e-9; })) }));
-  const mirrored = rows.map(mirrorRow).filter((x): x is StatRow => !!x);
-  const comparison = [
-    { key: "kontra", label: "Kontra (0–1, 4+)", ...metrics(rows.filter((r) => r.triggerOdds != null)) },
-    { key: "osnovni", label: "Osnovni tip na istim utakmicama (2+, 0–3)", ...metrics(mirrored) },
-    ...types.flatMap((t) => [
-      { key: `kontra-${t}`, label: `Kontra ${TYPE_LABEL[t]}`, ...metrics(rows.filter((r) => r.marketType === t && r.triggerOdds != null)) },
-      { key: `osnovni-${t}`, label: `Osnovni ${KONTRA_TRIGGER_OF[t].label} (umesto ${TYPE_LABEL[t]})`, ...metrics(mirrored.filter((r) => r.marketType === KONTRA_TRIGGER_OF[t].type)) },
-    ]),
-  ];
-  return { total: rows.length, overall: metrics(rows), byType, byTrigger, byOdds, comparison };
+  return { total: rows.length, overall: metrics(rows), byType, byTrigger, byOdds };
 }
 export type KontraStats = ReturnType<typeof computeKontraStats>;

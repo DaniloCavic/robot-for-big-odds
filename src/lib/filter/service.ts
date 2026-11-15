@@ -22,9 +22,9 @@ export function cleanName(raw: unknown): string {
   return name;
 }
 
-export async function listFilterSets(db: Db) {
+export async function listFilterSets(db: Db, strategy?: StrategyCode) {
   const sets = await db.filterSet.findMany({
-    where: { status: { not: "DELETED" } },
+    where: { status: { not: "DELETED" }, ...(strategy ? { strategy } : {}) },
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { entries: { where: { removedAt: null } } } } },
   });

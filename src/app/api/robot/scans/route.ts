@@ -14,8 +14,8 @@ const bodySchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   provider: z.string(),
-  /** OSNOVNI (podrazumevano), KONTRA ili OBA – „Skeniraj oba“: jedan prolaz kroz izvor, dva skeniranja. */
-  strategy: z.enum(["OSNOVNI", "KONTRA", "OBA"]).default("OSNOVNI"),
+  /** Skener velikih kvota: uvek KONTRA (0–1 umesto 2+, 4+ umesto 0–3). */
+  strategy: z.literal("KONTRA").default("KONTRA"),
 });
 
 export async function POST(req: Request) {
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   await markStaleScans();
   const settings = await getSettings();
 
-  const strategies = strategy === "OBA" ? (["OSNOVNI", "KONTRA"] as const) : ([strategy] as const);
+  const strategies = [strategy] as const;
   const created = await prisma.$transaction(async (tx) => {
     const running = await tx.robotScan.findFirst({ where: { status: "RUNNING" } });
     if (running) return null;
@@ -46,13 +46,8 @@ export async function POST(req: Request) {
     const out = [];
     for (const st of strategies) {
       out.push(await tx.robotScan.create({
-        data: { ...base, strategy: st, maxOddsUsed: st === "KONTRA" ? settings.kontraTriggerMax : settings.maxOdds },
+        data: { ...base, strategy: st, maxOddsUsed: settings.kontraTriggerMax },
       }));
-    }
-    // „Oba“: Kontra skeniranje deli zahteve sa Osnovnim (zahtevi se broje samo na Osnovnom)
-    if (out.length === 2) {
-      await tx.robotScan.update({ where: { id: out[0].id }, data: { diagnostics: { pairedWith: out[1].id } } });
-      out[1] = await tx.robotScan.update({ where: { id: out[1].id }, data: { diagnostics: { pairedWith: out[0].id, sharedRequests: true } } });
     }
     return out;
   }, { isolationLevel: "Serializable" }).catch(() => null);

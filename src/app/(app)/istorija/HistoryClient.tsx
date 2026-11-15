@@ -1,6 +1,5 @@
 "use client";
 
-import { StrategyBadge } from "../robot/RobotClient";
 import { useState } from "react";
 import { Card, EmptyState } from "@/components/ui";
 import type { ScanStatusDto, SelectionDto } from "@/lib/robot/scans";
@@ -93,7 +92,7 @@ function ScanRow({ s, open, onToggle, selections }: { s: ScanStatusDto; open: bo
       <tr className="cursor-pointer border-b border-line/50 hover:bg-panel-2/60" onClick={onToggle}>
         <td className="py-2 pr-3 whitespace-nowrap">{open ? "▾" : "▸"} {fmt.format(new Date(s.startedAt))}</td>
         <td className="py-2 pr-3">{s.periodLabel}</td>
-        <td className="py-2 pr-3">{s.providerName} <StrategyBadge strategy={s.strategy} />{s.isDemo && <span className="ml-1 rounded bg-live/20 px-1 text-[10px] font-bold text-live">DEMO</span>}</td>
+        <td className="py-2 pr-3">{s.providerName}{s.isDemo && <span className="ml-1 rounded bg-live/20 px-1 text-[10px] font-bold text-live">DEMO</span>}</td>
         <td className="py-2 pr-3"><span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[s.status][1]}`}>{STATUS[s.status][0]}</span></td>
         <td className="py-2 pr-3 tabular-nums">{s.fixturesScanned}{s.fixturesTotal != null ? ` / ${s.fixturesTotal}` : ""}</td>
         <td className="py-2 pr-3 tabular-nums">{s.fixturesExcluded}</td>
@@ -104,7 +103,7 @@ function ScanRow({ s, open, onToggle, selections }: { s: ScanStatusDto; open: bo
       {open && (
         <tr>
           <td colSpan={9} className="bg-panel-2/40 px-4 py-3 text-xs">
-            <p className="text-muted">Period: {fmt.format(new Date(s.startDate))} – {fmt.format(new Date(s.endDate))} · maks. kvota {s.maxOddsUsed.toFixed(2)}{s.pairsExcluded ? ` · izbačeno ${s.pairsExcluded} utakmica sa 2+ i 0–3` : ""}{s.combosCreated ? ` · spojenih tipova ${s.combosCreated}` : ""}{s.comboSkipped ? ` · preskočeno ${s.comboSkipped} (nema spojene kvote)` : ""}</p>
+            <p className="text-muted">Period: {fmt.format(new Date(s.startDate))} – {fmt.format(new Date(s.endDate))} · okidač do {s.maxOddsUsed.toFixed(2)}{s.diagnostics?.kontra ? ` · sa okidačem ${s.diagnostics.kontra.withTrigger} · preskočeno ${Object.values(s.diagnostics.kontra.skips).reduce((a, b) => a + b, 0)}` : ""}</p>
             {s.errors.length > 0 && <ul className="mt-2 space-y-0.5 text-lost">{s.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>}
             {!selections ? <p className="mt-2 text-muted">Učitavam…</p> : selections.length === 0 ? <p className="mt-2 text-muted">Nema selekcija.</p> : (
               <ul className="mt-2 grid gap-x-6 gap-y-0.5 sm:grid-cols-2">

@@ -5,9 +5,9 @@ import { MARKET_LABELS, type MarketTypeCode } from "@/lib/odds";
 import { getState } from "./job-state";
 import type { TrackerLogEntry, TrackerReport } from "./tracker";
 
-/** Tipovi koji su u bar jednom (neobrisanom) filteru. */
+/** Tipovi koji su u bar jednom (neobrisanom) filteru. Ovaj sajt je skener velikih kvota – samo Kontra filteri. */
 const inActiveFilter: Prisma.TrackedSelectionWhereInput = {
-  filterEntries: { some: { removedAt: null, filterSet: { status: { not: "DELETED" } } } },
+  filterEntries: { some: { removedAt: null, filterSet: { status: { not: "DELETED" }, strategy: "KONTRA" } } },
 };
 
 export const TABS = {

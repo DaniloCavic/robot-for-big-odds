@@ -1,4 +1,4 @@
-import { MARKET_TYPES, type MarketTypeCode } from "@/lib/odds";
+import { KONTRA_TYPES, MARKET_TYPES, type MarketTypeCode } from "@/lib/odds";
 import { ProviderError, RequestLimitReached, type OddsProvider, type ProviderFixture, type ScanContext } from "../types";
 
 /**
@@ -371,8 +371,8 @@ export async function compareBookmakers(apiKey: string, fixtureId: string, fetch
     competition: [fx.categoryName, fx.tournamentName].filter(Boolean).join(" · "),
     startTime: fx.startTime,
     bookmakers: ODDSPAPI_BOOKMAKERS.map((b) => {
-      // samo tipovi osnovnog robota (kontra tipovi se ovde ne prikazuju)
-      const odds = Object.fromEntries(Object.entries(extractOdds(fx, marketsCache!.map, b.slug)).filter(([k]) => (MARKET_TYPES as readonly string[]).includes(k))) as ProviderFixture["odds"];
+      // tipovi koje koristi skener: 1, 2, 2+, 0–3 (okidači i favorit) i 0–1, 4+ (igra se) – bez spojenih
+      const odds = Object.fromEntries(Object.entries(extractOdds(fx, marketsCache!.map, b.slug)).filter(([k]) => ([...MARKET_TYPES, ...KONTRA_TYPES] as readonly string[]).includes(k))) as ProviderFixture["odds"];
       // Sva tržišta za golove (pun meč) sa svim ishodima – da se vidi gde je npr. "2+"
       const goals = Object.entries(fx.bookmakerOdds?.[b.slug]?.markets ?? {})
         .filter(([mid]) => { const n = marketsCache!.names.get(mid) ?? "?"; return GOAL_MARKET.test(n) && !NOT_GOAL.test(n); })

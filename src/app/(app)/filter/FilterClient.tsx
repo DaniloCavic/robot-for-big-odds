@@ -11,7 +11,6 @@ import type { FilterEntryDto, FilterSetDto } from "@/lib/filter/service";
 import type { EntrySummary } from "@/lib/results/queries";
 import { StatusPill, signedRsd } from "@/components/status";
 import type { ScanStatusDto, SelectionDto } from "@/lib/robot/scans";
-import type { CandidateDto } from "@/lib/combos/service";
 
 const TZ = "Europe/Belgrade";
 const fmt = new Intl.DateTimeFormat("sr-Latn-RS", { timeZone: TZ, weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -19,9 +18,7 @@ const fmtShort = new Intl.DateTimeFormat("sr-Latn-RS", { timeZone: TZ, day: "2-d
 const dayKey = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(iso));
 const fmtDay = (key: string) => new Intl.DateTimeFormat("sr-Latn-RS", { weekday: "short", day: "2-digit", month: "2-digit" }).format(new Date(`${key}T12:00:00Z`));
 const rsd = (n: number) => new Intl.NumberFormat("sr-Latn-RS", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + " RSD";
-const TYPES = ["1", "2", "2+", "0–3", "1&2+", "1&0–3", "2&2+", "2&0–3"] as const;
 const KONTRA_TYPES = ["0–1", "4+"] as const;
-type Strategy = "OSNOVNI" | "KONTRA";
 
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -39,7 +36,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return j as T;
 }
 
-export function FilterClient({ initialSets, scans, combineEnabled = true }: { initialSets: FilterSetDto[]; scans: ScanStatusDto[]; combineEnabled?: boolean }) {
+export function FilterClient({ initialSets, scans }: { initialSets: FilterSetDto[]; scans: ScanStatusDto[] }) {
   const [sets, setSets] = useState(initialSets);
   const [setId, setSetId] = useState<string | null>(initialSets[0]?.id ?? null);
   const [entries, setEntries] = useState<FilterEntryDto[]>([]);
@@ -48,7 +45,6 @@ export function FilterClient({ initialSets, scans, combineEnabled = true }: { in
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "err" } | null>(null);
   const [dragging, setDragging] = useState<SelectionDto | null>(null);
   const [newName, setNewName] = useState<string | null>(null);
-  const [newStrategy, setNewStrategy] = useState<Strategy>("OSNOVNI");
   const [renaming, setRenaming] = useState<string | null>(null);
   // filteri leve kolone
   const [q, setQ] = useState("");
@@ -86,45 +82,14 @@ export function FilterClient({ initialSets, scans, combineEnabled = true }: { in
   useEffect(() => { const iv = setInterval(() => refreshEntries(setId), 60_000); return () => clearInterval(iv); }, [setId, refreshEntries]);
 
   useEffect(() => { refreshEntries(setId); if (setId) store.set("fos.filter.set", setId); }, [setId, refreshEntries]);
-  const [candidates, setCandidates] = useState<CandidateDto[]>([]);
-  const loadCandidates = useCallback(async (id: string | null) => {
-    if (!id) return setCandidates([]);
-    api<CandidateDto[]>(`/api/robot/scans/${id}/candidates`).then(setCandidates).catch(() => setCandidates([]));
-  }, []);
   useEffect(() => {
     if (!scanId) return setSelections([]);
     store.set("fos.filter.scan", scanId);
     api<SelectionDto[]>(`/api/robot/scans/${scanId}/selections`).then(setSelections).catch(() => setSelections([]));
-    loadCandidates(scanId);
-  }, [scanId, loadCandidates]);
-
-  async function addCombo(c: CandidateDto, odds: string) {
-    if (!setId) return flash("Prvo napravite ili izaberite filter (desno).", "err");
-    try {
-      const r = await api<{ replaced: number; odds: number }>(`/api/filter-sets/${setId}/combo`, { method: "POST", body: JSON.stringify({ candidateId: c.id, odds }) });
-      flash(`Dodato: ${c.homeTeam} – ${c.awayTeam}, ${c.label} @ ${r.odds.toFixed(2)}${r.replaced ? ` (zamenjeno ${r.replaced} pojedinačnih tipova)` : ""}`);
-      await Promise.all([refreshEntries(setId), refreshSets(), loadCandidates(scanId)]);
-    } catch (e) { flash((e as Error).message, "err"); }
-  }
+  }, [scanId]);
 
   const inFilter = useMemo(() => new Set(entries.map((e) => `${e.matchId}|${e.marketType}`)), [entries]);
   const activeSet = sets.find((s) => s.id === setId) ?? null;
-  const scanStrategy: Strategy = scans.find((s) => s.id === scanId)?.strategy ?? "OSNOVNI";
-  const isKontraScan = scanStrategy === "KONTRA";
-  // filter i skeniranje moraju biti iste strategije (kontra tipovi idu samo u Kontra filter)
-  const mismatch = !!activeSet && activeSet.strategy !== scanStrategy;
-  const matchingSets = sets.filter((s) => s.strategy === scanStrategy);
-
-  // kad se promeni skeniranje, predloži filter iste strategije
-  useEffect(() => {
-    const cur = sets.find((s) => s.id === setId);
-    if (cur && cur.strategy !== scanStrategy) {
-      const other = sets.find((s) => s.strategy === scanStrategy);
-      if (other) setSetId(other.id);
-    }
-    setTypes([]);
-  }, [scanStrategy]); // eslint-disable-line react-hooks/exhaustive-deps
-
   async function add(sel: SelectionDto) {
     if (!setId) return flash("Prvo napravite ili izaberite filter (desno).", "err");
     try {
@@ -145,7 +110,7 @@ export function FilterClient({ initialSets, scans, combineEnabled = true }: { in
       const r = await api<{ added: number; duplicate: number; started: number; invalid: number; pair?: number; strategy?: number }>(`/api/filter-sets/${setId}/entries/bulk`, {
         method: "POST", body: JSON.stringify({ marketSelectionIds: list.map((s) => s.id) }),
       });
-      const skipped = [r.duplicate && `${r.duplicate} već u filteru`, r.started && `${r.started} počelo`, r.invalid && `${r.invalid} neispravno`, r.pair && `${r.pair} (${isKontraScan ? "drugi kontra tip iste utakmice" : "2+ i 0–3 ista utakmica"})`, r.strategy && `${r.strategy} druga strategija`].filter(Boolean).join(", ");
+      const skipped = [r.duplicate && `${r.duplicate} već u filteru`, r.started && `${r.started} počelo`, r.invalid && `${r.invalid} neispravno`, r.pair && `${r.pair} (drugi tip iste utakmice)`, r.strategy && `${r.strategy} nije 0–1 / 4+`].filter(Boolean).join(", ");
       flash(`Dodato ${r.added} tipova${skipped ? ` (preskočeno: ${skipped})` : ""}.`);
       await Promise.all([refreshEntries(setId), refreshSets()]);
     } catch (e) { flash((e as Error).message, "err"); } finally { setBulkBusy(false); }
@@ -169,16 +134,15 @@ export function FilterClient({ initialSets, scans, combineEnabled = true }: { in
     } catch (e) { flash((e as Error).message, "err"); }
   }
 
-  function startNew(st: Strategy) {
-    setNewStrategy(st);
+  function startNew() {
     const d = new Intl.DateTimeFormat("sr-Latn-RS", { timeZone: TZ, day: "numeric", month: "numeric" }).format(new Date());
-    setNewName(`${st === "KONTRA" ? "Kontra" : "Filter"} ${d}`);
+    setNewName(`Filter ${d}`);
   }
 
   async function createSet(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const { id } = await api<{ id: string }>("/api/filter-sets", { method: "POST", body: JSON.stringify({ name: newName, strategy: newStrategy }) });
+      const { id } = await api<{ id: string }>("/api/filter-sets", { method: "POST", body: JSON.stringify({ name: newName }) });
       setNewName(null);
       await refreshSets();
       setSetId(id);
@@ -261,7 +225,7 @@ export function FilterClient({ initialSets, scans, combineEnabled = true }: { in
             <select aria-label="Skeniranje" value={scanId ?? ""} onChange={(e) => setScanId(e.target.value || null)} className={`${inputCls} max-w-full`}>
               {scans.length === 0 && <option value="">Nema skeniranja</option>}
               {scans.map((s) => (
-                <option key={s.id} value={s.id}>{s.strategy === "KONTRA" ? "KONTRA · " : ""}{fmtShort.format(new Date(s.startedAt))} · {s.periodLabel} · {s.providerName}{s.isDemo ? " (DEMO)" : ""} · {s.selectionsFound}</option>
+                <option key={s.id} value={s.id}>{fmtShort.format(new Date(s.startedAt))} · {s.periodLabel} · {s.providerName}{s.isDemo ? " (DEMO)" : ""} · {s.selectionsFound}</option>
               ))}
             </select>
           </div>
@@ -283,7 +247,7 @@ export function FilterClient({ initialSets, scans, combineEnabled = true }: { in
                   </select>
                 </div>
                 <div className="flex flex-wrap gap-1 sm:col-span-2">
-                  {(isKontraScan ? KONTRA_TYPES : TYPES).map((t) => (
+                  {KONTRA_TYPES.map((t) => (
                     <button key={t} type="button" aria-pressed={types.includes(t)} onClick={() => setTypes((x) => (x.includes(t) ? x.filter((y) => y !== t) : [...x, t]))}
                       className={`min-w-11 flex-1 rounded-lg border px-2 py-2 text-sm ${types.includes(t) ? "border-accent/60 bg-accent/10 text-accent" : "border-line text-muted"}`}>{t}</button>
                   ))}
@@ -294,35 +258,13 @@ export function FilterClient({ initialSets, scans, combineEnabled = true }: { in
                   <input value={maxOdds} onChange={(e) => setMaxOdds(e.target.value)} placeholder="do" aria-label="Kvota do" inputMode="decimal" className={`${inputCls} w-full`} />
                 </div>
               </div>
-              {isKontraScan ? (
-                <p className="mb-3 rounded-lg border border-pending/40 bg-pending/5 px-3 py-2 text-xs text-muted" data-testid="kontra-note">
-                  <b className="text-pending">Kontra skeniranje</b>: tipovi 0–1 i 4+ po kvoti kladionice (bez gornje granice). Dodaju se samo u <b className="text-text">Kontra filter</b>.
-                </p>
-              ) : candidates.length > 0 ? (
-                <ComboCandidates candidates={candidates} inFilter={inFilter} now={now} onAdd={addCombo} />
-              ) : (
-                <p className="mb-3 rounded-lg border border-line px-3 py-2 text-xs text-muted" data-testid="no-candidates">
-                  Spojeni tipovi (ručni unos): u ovom skeniranju nema kandidata.
-                  {combineEnabled ? " Nijedna utakmica nije imala 1/2 + jedan tip golova do 1.30." : <> Spajanje je <b className="text-live">isključeno</b> u Podešavanjima („Spoji 1/2 i tip golova“) – uključi ga i ponovo pokreni robota.</>}
-                </p>
-              )}
               {(() => {
                 const addable = filtered.filter((s) => !inFilter.has(`${s.matchId}|${s.marketType}`) && new Date(s.kickoffTime).getTime() > now);
                 return (
                   <>
-                  {mismatch && (
-                    <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-lost/40 bg-lost/10 px-3 py-2 text-xs text-lost" data-testid="strategy-mismatch">
-                      <span className="flex-1">Izabrani filter „{activeSet!.name}“ je {activeSet!.strategy === "KONTRA" ? "Kontra" : "Osnovni"}, a skeniranje je {isKontraScan ? "Kontra" : "Osnovno"}. {matchingSets.length ? "Izaberite filter iste strategije:" : `Napravite ${isKontraScan ? "Kontra" : "Osnovni"} filter.`}</span>
-                      {matchingSets.length > 0 ? matchingSets.slice(0, 3).map((m) => (
-                        <button key={m.id} type="button" onClick={() => setSetId(m.id)} className="rounded-lg border border-lost/40 px-2 py-1 text-text hover:bg-lost/10">{m.name}</button>
-                      )) : (
-                        <button type="button" onClick={() => startNew(scanStrategy)} className="rounded-lg border border-lost/40 px-2 py-1 text-text hover:bg-lost/10">+ Novi {isKontraScan ? "Kontra" : "Osnovni"} filter</button>
-                      )}
-                    </div>
-                  )}
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs text-muted">{filtered.length} tipova · prevucite tip u filter ili kliknite <b>+</b></p>
-                    <button type="button" onClick={() => addAll(addable)} disabled={bulkBusy || !activeSet || mismatch || addable.length === 0}
+                    <button type="button" onClick={() => addAll(addable)} disabled={bulkBusy || !activeSet || addable.length === 0}
                       className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-bg hover:bg-accent-strong disabled:opacity-40">
                       {bulkBusy ? "Dodajem…" : `Dodaj sve u filter (${addable.length})`}
                     </button>
@@ -364,24 +306,15 @@ export function FilterClient({ initialSets, scans, combineEnabled = true }: { in
             <h2 className="mr-auto font-semibold">Moj filter</h2>
             {sets.length > 0 && (
               <select aria-label="Izabrani filter" value={setId ?? ""} onChange={(e) => setSetId(e.target.value)} className={`${inputCls} max-w-[60%]`}>
-                {sets.map((s) => <option key={s.id} value={s.id}>{s.strategy === "KONTRA" ? "KONTRA · " : ""}{s.name} ({s.count})</option>)}
+                {sets.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.count})</option>)}
               </select>
             )}
-            <button type="button" onClick={() => startNew(scanStrategy)}
+            <button type="button" onClick={() => startNew()}
               className="rounded-xl border border-accent/50 px-3 py-2 text-sm text-accent hover:bg-accent/10">+ Novi filter</button>
           </div>
 
           {newName !== null && (
-            <form onSubmit={createSet} className="mb-3 flex flex-wrap gap-2">
-              <div className="flex w-full gap-1" role="radiogroup" aria-label="Strategija filtera">
-                {(["OSNOVNI", "KONTRA"] as const).map((st) => (
-                  <button key={st} type="button" role="radio" aria-checked={newStrategy === st} data-testid={`new-filter-${st}`}
-                    onClick={() => { setNewStrategy(st); setNewName((n) => (n ?? "").replace(/^(Kontra|Filter) /, `${st === "KONTRA" ? "Kontra" : "Filter"} `)); }}
-                    className={`flex-1 rounded-lg border px-3 py-1.5 text-sm ${newStrategy === st ? (st === "KONTRA" ? "border-pending/60 bg-pending/10 text-pending" : "border-accent/60 bg-accent/10 text-accent") : "border-line text-muted"}`}>
-                    {st === "KONTRA" ? "Kontra (0–1, 4+)" : "Osnovni"}
-                  </button>
-                ))}
-              </div>
+            <form onSubmit={createSet} className="mb-3 flex gap-2">
               <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} aria-label="Naziv novog filtera" maxLength={80} className={`${inputCls} flex-1`} />
               <button type="submit" className="rounded-xl bg-accent px-4 text-sm font-semibold text-bg">Napravi</button>
               <button type="button" onClick={() => setNewName(null)} className="px-2 text-sm text-muted">Otkaži</button>
@@ -400,7 +333,6 @@ export function FilterClient({ initialSets, scans, combineEnabled = true }: { in
                 </form>
               ) : (
                 <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wider ${activeSet.strategy === "KONTRA" ? "bg-pending/20 text-pending" : "bg-accent/15 text-accent"}`} data-testid="filter-strategy">{activeSet.strategy === "KONTRA" ? "KONTRA" : "OSNOVNI"}</span>
                   <span>Napravljen {fmtShort.format(new Date(activeSet.createdAt))}</span>
                   <button type="button" onClick={() => setRenaming(activeSet.name)} className="hover:text-text">Preimenuj</button>
                   <button type="button" onClick={deleteSet} className="hover:text-lost">Obriši filter</button>
@@ -515,45 +447,5 @@ function DropZone({ active, children }: { active: boolean; children: React.React
       className={`min-h-40 rounded-xl border-2 border-dashed p-2 transition-colors ${isOver ? "border-accent bg-accent/15" : active ? "border-accent/60 bg-accent/5" : "border-line"}`}>
       {children}
     </div>
-  );
-}
-
-function ComboCandidates({ candidates, inFilter, now, onAdd }: {
-  candidates: CandidateDto[]; inFilter: Set<string>; now: number; onAdd: (c: CandidateDto, odds: string) => void;
-}) {
-  const [odds, setOdds] = useState<Record<string, string>>({});
-  const open = candidates.filter((c) => new Date(c.kickoffTime).getTime() > now && !inFilter.has(`${c.matchId}|${c.comboType}`)).length;
-  return (
-    <details open className="mb-4 rounded-xl border border-live/40 bg-live/5 p-3" data-testid="combo-candidates">
-      <summary className="cursor-pointer text-sm font-semibold">Spojeni tipovi – unesi kvotu sa AdmiralBet-a ({open} od {candidates.length})</summary>
-      <p className="mt-1 text-xs text-muted">Na AdmiralBet-u otvori utakmicu → „Kombinacije“ i prepiši kvotu (npr. 1&2+). Spojeni tip zamenjuje pojedinačne tipove te utakmice u filteru.</p>
-      <ul className="mt-3 space-y-2">
-        {candidates.map((c) => {
-          const added = inFilter.has(`${c.matchId}|${c.comboType}`);
-          const started = new Date(c.kickoffTime).getTime() <= now;
-          return (
-            <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-panel/80 px-3 py-2 text-sm">
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{c.homeTeam} – {c.awayTeam}</span>
-                <span className="block truncate text-xs text-muted">{fmt.format(new Date(c.kickoffTime))} · {c.competition} · {c.legs}</span>
-              </span>
-              <span className="rounded-md bg-accent/10 px-2 py-1 font-semibold text-accent">{c.label}</span>
-              {added ? (
-                <span className="text-sm text-accent" aria-label="Već u filteru">✓ {c.enteredOdds?.toFixed(2)}</span>
-              ) : started ? (
-                <span className="text-xs text-live">počela</span>
-              ) : (
-                <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); onAdd(c, odds[c.id] ?? ""); }}>
-                  <input value={odds[c.id] ?? (c.enteredOdds?.toFixed(2) ?? "")} onChange={(e) => setOdds({ ...odds, [c.id]: e.target.value })}
-                    inputMode="decimal" placeholder="kvota" aria-label={`Kvota ${c.label} ${c.homeTeam} – ${c.awayTeam}`}
-                    className="w-20 rounded-lg border border-line bg-bg px-2 py-1.5 text-sm tabular-nums outline-none focus:border-accent" />
-                  <button type="submit" aria-label={`Dodaj spojeni ${c.label} ${c.homeTeam} – ${c.awayTeam}`} className="rounded-lg bg-accent px-3 py-1.5 font-bold text-bg">+</button>
-                </form>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </details>
   );
 }

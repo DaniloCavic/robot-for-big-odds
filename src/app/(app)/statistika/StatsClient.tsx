@@ -2,11 +2,10 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Card, EmptyState } from "@/components/ui";
-import { TYPE_LABEL, type CandidateStats, type KontraStats, type Metrics, type Stats as BaseStats } from "@/lib/stats/compute";
+import { TYPE_LABEL, type KontraStats, type Metrics, type Stats as BaseStats } from "@/lib/stats/compute";
 
-type Stats = BaseStats & { strategies: (Metrics & { key: string; label: string })[]; candidates: CandidateStats; kontra: KontraStats | null };
-type Strategy = "OSNOVNI" | "KONTRA" | "SVE";
-const STRATEGY_TABS: [Strategy, string][] = [["OSNOVNI", "Osnovni"], ["KONTRA", "Kontra"], ["SVE", "Sve"]];
+/** Skener velikih kvota: statistika samo za 0–1 i 4+. */
+type Stats = Pick<BaseStats, "overall" | "timeline" | "byFilterSet" | "byCompetition" | "recentLost"> & { kontra: KontraStats };
 import { CumulativeLine, WonLostColumns, type PeriodPoint } from "./charts";
 
 const TZ = "Europe/Belgrade";
@@ -43,35 +42,28 @@ function labelFor(key: string, g: string) {
   return g === "week" ? `od ${d}.${m}.` : `${d}.${m}.`;
 }
 
-export function StatsClient({ sets }: { sets: { id: string; name: string; deleted: boolean; strategy?: "OSNOVNI" | "KONTRA" }[] }) {
-  const [strategy, setStrategyState] = useState<Strategy>("OSNOVNI");
-  useEffect(() => {
-    try { const s = localStorage.getItem("fos.stats.strategy"); if (s === "OSNOVNI" || s === "KONTRA" || s === "SVE") setStrategyState(s); } catch {}
-  }, []);
-  const setStrategy = (s: Strategy) => { setStrategyState(s); setFilterSet(""); try { localStorage.setItem("fos.stats.strategy", s); } catch {} };
-  const visibleSets = sets.filter((s) => strategy === "SVE" || (s.strategy ?? "OSNOVNI") === strategy);
+export function StatsClient({ sets }: { sets: { id: string; name: string; deleted: boolean }[] }) {
   const [preset, setPreset] = useState<Preset>("30");
   const [custom, setCustom] = useState({ from: shift(todayYmd(), -6), to: todayYmd() });
   const [filterSet, setFilterSet] = useState("");
   const [scope, setScope] = useState<"active" | "all">("active");
   const [demo, setDemo] = useState(false);
   const [granularity, setGranularity] = useState<"day" | "week" | "month">("day");
-  const [oddsMode, setOddsMode] = useState<"fine" | "spec">("fine");
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
   const range = rangeFor(preset, custom);
   useEffect(() => {
-    const qs = new URLSearchParams({ scope, demo: demo ? "1" : "0", granularity, strategy });
+    const qs = new URLSearchParams({ scope, demo: demo ? "1" : "0", granularity });
     if (range.from) qs.set("from", range.from);
     if (range.to) qs.set("to", range.to);
     if (filterSet) qs.set("filterSet", filterSet);
     setLoading(true);
-    // stariji (sporiji) odgovor ne sme da pregazi noviji – npr. pri brzom prebacivanju Osnovni/Kontra
+    // stariji (sporiji) odgovor ne sme da pregazi noviji – npr. pri brzom menjanju filtera
     let current = true;
     fetch(`/api/stats?${qs}`, { cache: "no-store" }).then((r) => r.json()).then((j) => { if (current) setStats(j); }).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [range.from, range.to, filterSet, scope, demo, granularity, strategy]);
+  }, [range.from, range.to, filterSet, scope, demo, granularity]);
 
   const timeline: PeriodPoint[] = useMemo(() => (stats?.timeline ?? []).map((t) => ({ ...t, label: labelFor(t.key, granularity) })), [stats, granularity]);
   const control = "rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent";
@@ -79,17 +71,6 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
 
   return (
     <div className="space-y-4">
-      {/* Strategija – prekidač na vrhu */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-xl border border-line bg-panel p-1" role="tablist" aria-label="Strategija">
-          {STRATEGY_TABS.map(([k, l]) => (
-            <button key={k} type="button" role="tab" aria-selected={strategy === k} onClick={() => setStrategy(k)} data-testid={`stats-strategy-${k}`}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${strategy === k ? (k === "KONTRA" ? "bg-pending/15 text-pending" : "bg-accent/15 text-accent") : "text-muted hover:text-text"}`}>{l}</button>
-          ))}
-        </div>
-        <p className="text-xs text-muted">{strategy === "OSNOVNI" ? "Osnovni robot (1, 2, 2+, 0–3, spojeni) – svi stari podaci su ovde." : strategy === "KONTRA" ? "Kontra robot: 0–1 umesto 2+, 4+ umesto 0–3." : "Osnovni i Kontra zajedno."}</p>
-      </div>
-
       {/* Filteri – jedan red iznad svega */}
       <Card className="!p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -108,7 +89,7 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
           )}
           <select aria-label="Filter" value={filterSet} onChange={(e) => setFilterSet(e.target.value)} className={`${control} ml-auto max-w-56`}>
             <option value="">Svi filteri</option>
-            {visibleSets.map((s) => <option key={s.id} value={s.id}>{s.strategy === "KONTRA" && strategy === "SVE" ? "KONTRA · " : ""}{s.name}{s.deleted ? " (obrisan)" : ""}</option>)}
+            {sets.map((s) => <option key={s.id} value={s.id}>{s.name}{s.deleted ? " (obrisan)" : ""}</option>)}
           </select>
           <select aria-label="Obuhvat" value={scope} onChange={(e) => setScope(e.target.value as "active" | "all")} className={control}>
             <option value="active">Aktivni filteri</option>
@@ -134,94 +115,7 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
           )}
           <Insight m={o} />
 
-          {stats.kontra && stats.kontra.total > 0 && <KontraSection k={stats.kontra} />}
-
-          <Card>
-            <h2 className="mb-1 font-semibold">Strategije</h2>
-            <p className="mb-4 text-xs text-muted">Isti tipovi, različiti pristupi – koji bi doneo plus. Bela crta = prolaznost potrebna za nulu.</p>
-            <BarTable rows={stats.strategies.filter((x) => x.total > 0)} testId="strategies" />
-          </Card>
-
-          {stats.candidates.total > 0 && (
-            <Card>
-              <h2 className="mb-1 font-semibold">Spojeni tipovi – svi kandidati (virtuelno)</h2>
-              <p className="mb-4 text-xs text-muted">
-                Utakmice gde je robot tražio spojeni tip ({stats.candidates.total}, sa rezultatom {stats.candidates.withResult}). Kvota spojenog tipa nije poznata za sve,
-                zato je prikazana <b>potrebna kvota za plus</b>: ako AdmiralBet nudi veću, spojeni tip se isplati. Pored je poređenje sa igranjem samo 1/2 ili samo tipa golova (ulog 1.000 RSD).
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-sm" data-testid="candidates">
-                  <thead className="text-muted">
-                    <tr>{["Spojeni tip", "Utakmica", "Prošlo oba dela", "Potrebna kvota za plus", "Samo 1/2: prolaznost", "Samo 1/2: neto", "Samo golovi: prolaznost", "Samo golovi: neto"].map((h) => <th key={h} className="py-2 text-right font-medium first:text-left">{h}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {[{ key: "all", label: "Svi", ...stats.candidates.overall }, ...stats.candidates.byType].map((c) => (
-                      <tr key={c.key} className="border-t border-line/60 tabular-nums">
-                        <td className="py-2 text-left font-semibold">{c.label}</td>
-                        <td className="text-right">{c.matches}</td>
-                        <td className="text-right">{pct(c.comboPassRate)}</td>
-                        <td className="text-right font-semibold">{c.neededOdds == null ? "—" : `> ${c.neededOdds.toFixed(2)}`}</td>
-                        <td className="text-right">{pct(c.winnerPassRate)}</td>
-                        <td className={`text-right ${tone(c.winnerNet)}`}>{c.matches ? signed(c.winnerNet) : "—"}</td>
-                        <td className="text-right">{pct(c.goalsPassRate)}</td>
-                        <td className={`text-right ${tone(c.goalsNet)}`}>{c.matches ? signed(c.goalsNet) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
-
-          {strategy !== "KONTRA" && <div className="grid gap-4">
-            <Card>
-              <h2 className="mb-1 font-semibold">Golovi ili konačan ishod?</h2>
-              <p className="mb-4 text-xs text-muted">Traka = prolaznost, bela crta = prolaznost potrebna za nulu kod tih kvota.</p>
-              <BarTable rows={stats.byGroup} testId="by-group" />
-            </Card>
-            <Card>
-              <h2 className="mb-1 font-semibold">Po tipu</h2>
-              <p className="mb-4 text-xs text-muted">Koji tip najviše prolazi i da li donosi plus.</p>
-              <BarTable rows={stats.byType} testId="by-type" />
-            </Card>
-          </div>}
-
-          {strategy !== "KONTRA" && <>
-          <Card>
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-semibold">Po kvoti – koje kvote najčešće padaju</h2>
-              <div className="flex gap-1 text-xs">
-                {([["fine", "Na 0.05"], ["spec", "1.01–1.10 / 1.11–1.20 / 1.21–1.30"]] as const).map(([k, l]) => (
-                  <button key={k} type="button" aria-pressed={oddsMode === k} onClick={() => setOddsMode(k)} className={`rounded-lg px-2.5 py-1 ${oddsMode === k ? "bg-accent/15 text-accent" : "text-muted"}`}>{l}</button>
-                ))}
-              </div>
-            </div>
-            <p className="mb-4 text-xs text-muted">Kolona „Palo“ pokazuje u kom opsegu kvota tipovi najčešće padaju.</p>
-            <BarTable rows={oddsMode === "fine" ? stats.byOdds : stats.bySpecOdds} testId="by-odds" />
-          </Card>
-
-          <Card>
-            <h2 className="mb-1 font-semibold">Tip × kvota</h2>
-            <p className="mb-4 text-xs text-muted">Prolaznost u svakoj kombinaciji (prošlo/palo). Prazno = nema obračunatih tipova.</p>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm" data-testid="matrix">
-                <thead className="text-muted"><tr><th className="py-2 text-left font-medium">Tip</th>{stats.byOdds.map((b) => <th key={b.key} className="py-2 text-right font-medium">{b.label}</th>)}</tr></thead>
-                <tbody>
-                  {stats.matrix.map((r) => (
-                    <tr key={r.key} className="border-t border-line/60">
-                      <td className="py-2 font-semibold">{r.label}</td>
-                      {r.cells.map((c) => (
-                        <td key={c.bucket} className="py-2 text-right tabular-nums">
-                          {c.won + c.lost === 0 ? <span className="text-muted">·</span> : <>{pct(c.passRate, 0)} <span className="text-xs text-muted">{c.won}/{c.lost}</span></>}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-          </>}
+          <KontraSection k={stats.kontra} />
 
           <Card>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -297,7 +191,7 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
   );
 }
 
-/** Kontra robot: tabela po tipu, po kvoti okidača, po kvoti kontra tipa i poređenje sa osnovnim tipom. */
+/** Skener velikih kvota: tabela po tipu, po kvoti okidača i po kvoti tipa (0–1, 4+). */
 function KontraSection({ k }: { k: KontraStats }) {
   const head = ["", "Tipova", "Prošlo / palo", "Prolaznost", "Profit", "ROI", "Pros. kvota", "Break-even"];
   const Row = ({ r, sub = false }: { r: Metrics & { key: string; label: string }; sub?: boolean }) => (
@@ -321,31 +215,18 @@ function KontraSection({ k }: { k: KontraStats }) {
     </div>
   );
   const decided = k.overall.won + k.overall.lost;
-  const [kon, osn] = k.comparison;
   return (
     <div className="space-y-4" data-testid="kontra-stats">
       <Card>
-        <h2 className="mb-1 flex items-center gap-2 font-semibold"><span className="rounded-md bg-pending/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-pending">KONTRA</span> Po tipu</h2>
+        <h2 className="mb-1 font-semibold">Po tipu</h2>
         <p className="mb-4 text-xs text-muted">Break-even = prolaznost potrebna za nulu kod tih kvota (1 / prosečna kvota).</p>
         <Table testId="kontra-by-type">{k.byType.map((r) => <Row key={r.key} r={r} />)}</Table>
         {decided < 100 && (
           <p className="mt-3 rounded-lg border border-line px-3 py-2 text-xs text-muted">
-            Uzorak: <b className="text-text">{decided}</b> obračunatih kontra tipova. Kod kvota oko 3–5 prolazi se 20–30%, pa je niz od 5–10 promašaja normalan –
+            Uzorak: <b className="text-text">{decided}</b> obračunatih tipova. Kod kvota oko 3–5 prolazi se 20–30%, pa je niz od 5–10 promašaja normalan –
             za zaključak treba bar 100–150 tipova.
           </p>
         )}
-      </Card>
-
-      <Card>
-        <h2 className="mb-1 font-semibold">Kontra ili osnovni tip na istim utakmicama?</h2>
-        <p className="mb-4 text-xs text-muted">Šta bi doneo osnovni tip (okidač 2+ ili 0–3, po njegovoj kvoti i istom ulogu) na istim utakmicama. 0–1 i 2+ (kao i 4+ i 0–3) su tačne suprotnosti.</p>
-        {kon.won + kon.lost > 0 && (
-          <p className={`mb-3 rounded-lg px-3 py-2 text-sm ${kon.net >= osn.net ? "bg-won/10" : "bg-lost/10"}`} data-testid="kontra-verdict">
-            Kontra: <b className={tone(kon.net)}>{signed(kon.net)}</b> · Osnovni na istim utakmicama: <b className={tone(osn.net)}>{signed(osn.net)}</b> →{" "}
-            <b>{kon.net > osn.net ? "Kontra gubi manje / donosi više" : kon.net < osn.net ? "Osnovni tip gubi manje / donosi više" : "isto"}</b> (razlika {rsd(Math.abs(kon.net - osn.net))}).
-          </p>
-        )}
-        <Table testId="kontra-comparison">{k.comparison.map((r, i) => <Row key={r.key} r={r} sub={i > 1} />)}</Table>
       </Card>
 
       <Card>

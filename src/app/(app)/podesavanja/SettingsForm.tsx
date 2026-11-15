@@ -5,16 +5,11 @@ import { saveSettingsAction, type SettingsState } from "./actions";
 
 const input = "w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 tabular-nums outline-none focus:border-accent focus:ring-2 focus:ring-accent/30";
 
-export function SettingsForm({ maxOdds, stake, maxRequests, checkMinutes, opChecks, goalsPair, combine, fallback, afCap, kontraTrigger = 1.3, kontraFavorite = 1.3 }: { maxOdds: number; stake: number; maxRequests: number; checkMinutes: number; opChecks: number; goalsPair: boolean; combine: boolean; fallback: string; afCap: number; kontraTrigger?: number; kontraFavorite?: number }) {
+export function SettingsForm({ stake, maxRequests, checkMinutes, opChecks, afCap, kontraTrigger = 1.3, kontraFavorite = 1.3 }: { stake: number; maxRequests: number; checkMinutes: number; opChecks: number; afCap: number; kontraTrigger?: number; kontraFavorite?: number }) {
   const [state, action, pending] = useActionState<SettingsState, FormData>(saveSettingsAction, {});
   return (
     <form action={action} className="space-y-5">
       <div className="grid gap-5 sm:grid-cols-2">
-        <div>
-          <label htmlFor="maxOdds" className="mb-1.5 block text-sm text-muted">Maksimalna kvota</label>
-          <input id="maxOdds" name="maxOdds" inputMode="decimal" defaultValue={maxOdds.toFixed(2)} className={input} />
-          <p className="mt-1.5 text-xs text-muted">Od 1.01 do 1.30. Kvota 1.30 se prihvata, 1.31 ne.</p>
-        </div>
         <div>
           <label htmlFor="stakePerSelection" className="mb-1.5 block text-sm text-muted">Ulog po tipu (RSD)</label>
           <input id="stakePerSelection" name="stakePerSelection" inputMode="decimal" defaultValue={stake.toFixed(2)} className={input} />
@@ -41,30 +36,8 @@ export function SettingsForm({ maxOdds, stake, maxRequests, checkMinutes, opChec
           <p className="mt-1.5 text-xs text-muted">Rezervni izvor – 1 zahtev po utakmici, troši mesečnu OddsPapi kvotu.</p>
         </div>
       </div>
-      <label className="flex items-start gap-3 rounded-xl border border-line p-3 text-sm">
-        <input type="checkbox" name="excludeGoalsPair" defaultChecked={goalsPair} className="mt-0.5 accent-[var(--color-accent)]" />
-        <span>
-          <span className="font-medium">Izbaci utakmice gde su i 2+ i 0–3 do maks. kvote</span>
-          <span className="block text-xs text-muted">Takva utakmica je praktično igra na „2 ili 3 gola“ – robot ne čuva nijedan od ta dva tipa (1 i 2 ostaju).</span>
-        </span>
-      </label>
-      <label className="flex items-start gap-3 rounded-xl border border-line p-3 text-sm">
-        <input type="checkbox" name="combineResultGoals" defaultChecked={combine} className="mt-0.5 accent-[var(--color-accent)]" />
-        <span>
-          <span className="font-medium">Spoji 1/2 i tip golova u jedan tip („1&2+“, „1&0–3“, „2&2+“, „2&0–3“)</span>
-          <span className="block text-xs text-muted">Igra se po kvoti kladionice za spojeni tip (bez ograničenja kvote).</span>
-          <span className="mt-2 block">
-            <label htmlFor="comboFallback" className="text-xs text-muted">Ako izvor nema kvotu spojenog tipa:</label>
-            <select id="comboFallback" name="comboFallback" defaultValue={fallback} className="mt-1 block w-full rounded-lg border border-line bg-bg px-2.5 py-1.5 text-sm">
-              <option value="WINNER_ONLY">Igraj samo 1 (ili 2), tip golova izbaci</option>
-              <option value="SKIP">Preskoči celu utakmicu</option>
-              <option value="BOTH_SINGLE">Igraj oba tipa odvojeno (kao ranije)</option>
-            </select>
-          </span>
-        </span>
-      </label>
-      <fieldset className="rounded-xl border border-pending/40 p-4" data-testid="kontra-settings">
-        <legend className="px-1 text-sm font-semibold"><span className="rounded-md bg-pending/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-pending">KONTRA</span> Kontra robot</legend>
+      <fieldset className="rounded-xl border border-line p-4" data-testid="kontra-settings">
+        <legend className="px-1 text-sm font-semibold">Pravila skenera velikih kvota</legend>
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
             <label htmlFor="kontraTriggerMax" className="mb-1.5 block text-sm text-muted">Prag okidača (2+ ili 0–3)</label>
@@ -77,7 +50,7 @@ export function SettingsForm({ maxOdds, stake, maxRequests, checkMinutes, opChec
             <p className="mt-1.5 text-xs text-muted">Ako je 1 ili 2 do ove kvote, utakmica se preskače. Podrazumevano 1.30.</p>
           </div>
         </div>
-        <p className="mt-3 text-xs text-muted">Ulog je isti kao kod osnovnog robota. Pragovi važe za nova skeniranja.</p>
+        <p className="mt-3 text-xs text-muted">Pragovi važe za nova skeniranja.</p>
       </fieldset>
       {state.error && <p role="alert" className="rounded-lg bg-lost/10 px-3 py-2 text-sm text-lost">{state.error}</p>}
       {state.ok && <p role="status" className="rounded-lg bg-won/10 px-3 py-2 text-sm text-won">Sačuvano.</p>}

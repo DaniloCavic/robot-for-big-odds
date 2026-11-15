@@ -18,21 +18,7 @@ const PERIODS = [
 ] as const;
 type PeriodKey = (typeof PERIODS)[number][0];
 
-const TYPES = ["1", "2", "2+", "0–3", "1&2+", "1&0–3", "2&2+", "2&0–3"] as const;
 const KONTRA_TYPES = ["0–1", "4+"] as const;
-
-type StrategyChoice = "OSNOVNI" | "KONTRA" | "OBA";
-const STRATEGIES: [StrategyChoice, string, string][] = [
-  ["OSNOVNI", "Osnovni", "1, 2, 2+, 0–3 sa kvotom do maks. kvote"],
-  ["KONTRA", "Kontra", "Gde je 2+ ili 0–3 ispod 1.31 igra 0–1 ili 4+"],
-  ["OBA", "Skeniraj oba", "Jedan prolaz, isti broj API zahteva"],
-];
-
-export function StrategyBadge({ strategy }: { strategy: "OSNOVNI" | "KONTRA" }) {
-  return strategy === "KONTRA"
-    ? <span className="rounded-md bg-pending/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-pending" data-testid="strategy-badge">KONTRA</span>
-    : <span className="rounded-md bg-accent/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-accent" data-testid="strategy-badge">OSNOVNI</span>;
-}
 
 const SKIP_LABELS: Record<string, string> = {
   FAVORIT_1_2: "Preskočeno – favorit 1/2",
@@ -54,8 +40,8 @@ function DemoBadge() {
   return <span className="rounded-md bg-live/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-live">DEMO</span>;
 }
 
-export function RobotClient({ providers: serverProviders, initialScans, today, maxOdds, maxRequests, kontraTrigger = 1.3 }: {
-  providers: Provider[]; initialScans: ScanStatusDto[]; today: string; maxOdds: number; maxRequests: number; kontraTrigger?: number;
+export function RobotClient({ providers: serverProviders, initialScans, today, maxRequests, kontraTrigger = 1.3, kontraFavorite = 1.3 }: {
+  providers: Provider[]; initialScans: ScanStatusDto[]; today: string; maxRequests: number; kontraTrigger?: number; kontraFavorite?: number;
 }) {
   const [source, setSource] = useState<SourceStatus | null>(null);
   const [touched, setTouched] = useState(false);
@@ -78,14 +64,6 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
   const [q, setQ] = useState("");
   const [types, setTypes] = useState<string[]>([]);
   const [sort, setSort] = useState<"time" | "odds">("time");
-  const [strategy, setStrategy] = useState<StrategyChoice>("OSNOVNI");
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("fos.robot.strategy");
-      if (saved === "OSNOVNI" || saved === "KONTRA" || saved === "OBA") setStrategy(saved);
-    } catch {}
-  }, []);
-  const isKontra = current?.strategy === "KONTRA";
 
   const running = current?.status === "RUNNING";
 
@@ -130,13 +108,6 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
       if (s.status !== "RUNNING" || tick % 3 === 0) loadSelections(s.id);
       if (s.status !== "RUNNING") {
         fetch("/api/robot/source-status", { cache: "no-store" }).then((x) => x.json()).then(setSource).catch(() => {});
-        // „Skeniraj oba“: osveži i drugo skeniranje iz istog prolaza
-        const pairedId = s.diagnostics?.pairedWith;
-        if (pairedId) {
-          fetch(`/api/robot/scans/${pairedId}`, { cache: "no-store" }).then((x) => (x.ok ? x.json() : null)).then((p: ScanStatusDto | null) => {
-            if (p) setScans((list) => list.map((x) => (x.id === p.id ? p : x)));
-          }).catch(() => {});
-        }
       }
     }, 1000);
     return () => clearInterval(iv);
@@ -149,15 +120,15 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
       const r = await fetch("/api/robot/scans", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ period, from, to, provider: providerId, strategy }),
+        body: JSON.stringify({ period, from, to, provider: providerId }),
       });
       const data = await r.json();
       if (!r.ok) return setError(data.error ?? "Greška pri pokretanju.");
-      const { paired, ...main } = data as ScanStatusDto & { paired: ScanStatusDto | null };
+      const main = data as ScanStatusDto;
       setCurrent(main);
       setSelections([]);
       setTypes([]);
-      setScans((list) => [...(paired ? [paired] : []), main, ...list].slice(0, 6));
+      setScans((list) => [main, ...list].slice(0, 5));
     } finally {
       setBusy(false);
     }
@@ -194,17 +165,6 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
       <Card>
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           <div>
-            <h2 className="mb-3 font-semibold">Strategija</h2>
-            <div className="mb-6 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Strategija">
-              {STRATEGIES.map(([key, label, hint]) => (
-                <button key={key} type="button" role="radio" aria-checked={strategy === key} disabled={running} data-testid={`strategy-${key}`}
-                  onClick={() => { setStrategy(key); try { localStorage.setItem("fos.robot.strategy", key); } catch {} }}
-                  className={`rounded-xl border px-4 py-2.5 text-left text-sm transition ${strategy === key ? (key === "KONTRA" ? "border-pending/60 bg-pending/10" : "border-accent/60 bg-accent/10") : "border-line hover:border-muted"} disabled:opacity-50`}>
-                  <span className={`block font-semibold ${strategy === key ? (key === "KONTRA" ? "text-pending" : "text-accent") : ""}`}>{label}</span>
-                  <span className="block text-xs text-muted">{key === "KONTRA" ? `Gde je 2+ ili 0–3 do ${kontraTrigger.toFixed(2)} igra 0–1 ili 4+` : hint}</span>
-                </button>
-              ))}
-            </div>
             <h2 className="mb-3 font-semibold">Period</h2>
             <div className="flex flex-wrap gap-2">
               {PERIODS.map(([key, label]) => (
@@ -253,7 +213,11 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
 
         {error && <p role="alert" className="mt-5 rounded-lg bg-lost/10 px-3 py-2 text-sm text-lost">{error}</p>}
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
+        <p className="mt-6 rounded-xl border border-line bg-panel-2/50 px-4 py-3 text-sm text-muted" data-testid="rules-info">
+          Okidač: <b className="text-text">2+</b> ili <b className="text-text">0–3</b> do <b className="text-text">{kontraTrigger.toFixed(2)}</b> → igra se <b className="text-accent">0–1</b> ili <b className="text-accent">4+</b> po kvoti kladionice.
+          Preskače se ako je 1 ili 2 do {kontraFavorite.toFixed(2)}, ako su oba (2+ i 0–3) ispod praga ili ako nema kvote za 0–1 / 4+. Pragovi: Podešavanja.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           {!running ? (
             <button type="button" onClick={start} disabled={busy}
               className="flex w-full items-center justify-center gap-3 rounded-2xl bg-accent py-5 text-xl font-bold tracking-wide text-bg shadow-lg shadow-accent/20 transition hover:bg-accent-strong disabled:opacity-60 sm:w-auto sm:px-14">
@@ -273,7 +237,7 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
         <Card>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="flex items-center gap-2 font-semibold">
-              Skeniranje: {current.periodLabel} · {current.providerName} <StrategyBadge strategy={current.strategy} /> {current.isDemo && <DemoBadge />}
+              Skeniranje: {current.periodLabel} · {current.providerName} {current.isDemo && <DemoBadge />}
             </h2>
             <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_LABEL[current.status][1]}`} data-testid="scan-status">
               {STATUS_LABEL[current.status][0]}
@@ -287,25 +251,14 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
             <Stat label="Kraj" value={current.finishedAt ? fmtTime.format(new Date(current.finishedAt)) : "—"} />
             <Stat label="Pregledano utakmica" value={`${current.fixturesScanned}${current.fixturesTotal != null ? ` / ${current.fixturesTotal}` : ""}`} testId="scanned" />
             <Stat label="Izbačeno (virtuelno i sl.)" value={String(current.fixturesExcluded)} />
-            {isKontra ? (
-              <>
-                <Stat label="Sa okidačem (2+ ili 0–3)" value={String(current.diagnostics?.kontra?.withTrigger ?? 0)} testId="kontra-trigger" />
-                <Stat label="Odigrano (0–1 / 4+)" value={String(current.selectionsFound)} testId="found" />
-                {Object.entries(SKIP_LABELS).map(([k, label]) => (
-                  <Stat key={k} label={label} value={String(current.diagnostics?.kontra?.skips?.[k as KontraSkipReason] ?? 0)} testId={`kontra-skip-${k}`} />
-                ))}
-              </>
-            ) : (
-              <>
-              <Stat label="Izbačeno (2+ i 0–3)" value={String(current.pairsExcluded ?? 0)} testId="pairs" />
-              <Stat label="Spojeni tipovi" value={String(current.combosCreated ?? 0)} testId="combos" />
-              <Stat label="Bez spojene kvote" value={String(current.comboSkipped ?? 0)} testId="combo-skipped" />
-              <Stat label="Pronađeno selekcija" value={String(current.selectionsFound)} testId="found" />
-              </>
-            )}
-            <Stat label="API zahteva" value={current.isDemo ? "0 (DEMO)" : current.diagnostics?.sharedRequests ? "deljeno sa Osnovnim" : String(current.requestsUsed)} />
+            <Stat label="Sa okidačem (2+ ili 0–3)" value={String(current.diagnostics?.kontra?.withTrigger ?? 0)} testId="kontra-trigger" />
+            <Stat label="Odigrano (0–1 / 4+)" value={String(current.selectionsFound)} testId="found" />
+            {Object.entries(SKIP_LABELS).map(([k, label]) => (
+              <Stat key={k} label={label} value={String(current.diagnostics?.kontra?.skips?.[k as KontraSkipReason] ?? 0)} testId={`kontra-skip-${k}`} />
+            ))}
+            <Stat label="API zahteva" value={current.isDemo ? "0 (DEMO)" : String(current.requestsUsed)} />
           </dl>
-          {isKontra ? <KontraDiagnosticsBox scan={current} /> : <Diagnostics scan={current} />}
+          <KontraDiagnosticsBox scan={current} />
           {current.errors.length > 0 && (
             <ul className="mt-4 space-y-1 rounded-lg bg-lost/10 px-3 py-2 text-sm text-lost">
               {current.errors.map((e, i) => <li key={i}>{e}</li>)}
@@ -321,7 +274,7 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pretraga tima ili lige"
               className="w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent sm:w-56" />
             <div className="flex gap-1">
-              {(isKontra ? KONTRA_TYPES : TYPES).map((t) => (
+              {KONTRA_TYPES.map((t) => (
                 <button key={t} type="button" aria-pressed={types.includes(t)}
                   onClick={() => setTypes((x) => (x.includes(t) ? x.filter((y) => y !== t) : [...x, t]))}
                   className={`min-w-10 rounded-lg border px-2.5 py-1.5 text-sm ${types.includes(t) ? "border-accent/60 bg-accent/10 text-accent" : "border-line text-muted"}`}>{t}</button>
@@ -333,12 +286,10 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
               <option value="odds">Po kvoti</option>
             </select>
           </div>
-          <p className="mb-4 text-xs text-muted">{isKontra
-            ? "Kontra tipovi po kvoti kladionice (bez gornje granice). Uz svaki tip je kvota okidača (2+ ili 0–3)."
-            : `Prevlačenje u filter stiže u fazi 3. Ovde su samo tipovi sa kvotom do ${maxOdds.toFixed(2)}.`}</p>
+          <p className="mb-4 text-xs text-muted">Tipovi 0–1 i 4+ po kvoti kladionice (bez gornje granice). Uz svaki tip je kvota okidača (2+ ili 0–3). U filter se dodaju na stranici Filter.</p>
 
           {filtered.length === 0 ? (
-            <EmptyState title={running ? "Robot traži…" : "Nema selekcija"} text={running ? "Selekcije se pojavljuju dok robot radi." : isKontra ? "Za ovaj period nema utakmica za kontra tip." : "Za ovaj period i filtere nema tipova sa kvotom do " + maxOdds.toFixed(2) + "."} />
+            <EmptyState title={running ? "Robot traži…" : "Nema selekcija"} text={running ? "Selekcije se pojavljuju dok robot radi." : "Za ovaj period nema utakmica gde je 2+ ili 0–3 do praga."} />
           ) : grouped ? (
             <ul className="grid gap-3 md:grid-cols-2" data-testid="selections">
               {grouped.map((rows) => {
@@ -396,7 +347,7 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
                 <button type="button" onClick={() => !running && setCurrent(s)} disabled={running}
                   className={`flex w-full flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-left hover:text-accent ${current?.id === s.id ? "text-accent" : ""}`}>
                   <span className="w-28 text-muted">{fmt.format(new Date(s.startedAt))}</span>
-                  <span className="flex items-center gap-2">{s.periodLabel} · {s.providerName} <StrategyBadge strategy={s.strategy} /> {s.isDemo && <DemoBadge />}</span>
+                  <span className="flex items-center gap-2">{s.periodLabel} · {s.providerName} {s.isDemo && <DemoBadge />}</span>
                   <span className="text-muted">{s.selectionsFound} selekcija</span>
                   <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${STATUS_LABEL[s.status][1]}`}>{STATUS_LABEL[s.status][0]}</span>
                 </button>
@@ -445,67 +396,8 @@ function SourceBox({ source, maxRequests }: { source: SourceStatus | null; maxRe
   );
 }
 
-const TYPE_LABEL: Record<string, string> = { HOME: "1", DRAW: "X", AWAY: "2", OVER_1_5: "2+", UNDER_3_5: "0–3" };
-
-function Diagnostics({ scan }: { scan: ScanStatusDto }) {
-  const d = scan.diagnostics;
-  if (!d?.priceCounts || scan.status === "RUNNING") return null;
-  const markets = d.bookmakerMarkets ?? d.soccerbetMarkets;
-  return (
-    <details className="mt-4 rounded-lg border border-line px-3 py-2 text-sm">
-      <summary className="cursor-pointer text-muted">Dijagnostika izvora</summary>
-      <table className="mt-3 w-full max-w-md text-left">
-        <thead className="text-muted"><tr><th className="py-1 font-medium">Tip</th><th className="font-medium">Kvota iz izvora</th><th className="font-medium">Do 1.30</th><th className="font-medium">Najniža</th></tr></thead>
-        <tbody>
-          {Object.entries(d.priceCounts).map(([k, v]) => (
-            <tr key={k} data-testid={`diag-${k}`}><td className="py-1 font-semibold">{TYPE_LABEL[k] ?? k}</td><td>{v.total}</td><td>{v.valid}</td><td>{v.min?.toFixed(2) ?? "—"}</td></tr>
-          ))}
-        </tbody>
-      </table>
-      {d.marketMap && <p className="mt-3 break-all text-xs text-muted">Mapiranje tržišta: {JSON.stringify(d.marketMap)}</p>}
-      {d.rawSamples && Object.keys(d.rawSamples).length > 0 && (
-        <div className="mt-3 text-xs text-muted">
-          <p className="mb-1">Tržišta golova koja kladionica šalje (uzorak, jedna utakmica):</p>
-          {Object.values(d.rawSamples).every((x) => x && typeof x === "object" && "outcomes" in (x as object) && Array.isArray((x as MarketDesc).outcomes))
-            ? <MarketList markets={Object.values(d.rawSamples) as MarketDesc[]} />
-            : <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg p-2 text-[11px]">{JSON.stringify(d.rawSamples, null, 1)}</pre>}
-        </div>
-      )}
-      {d.ruleLog && (
-        <div className="mt-3 text-xs text-muted" data-testid="rule-log">
-          <p className="mb-1">Primena pravila ({d.ruleLog.length} utakmica):</p>
-          {d.ruleLog.length === 0 ? <p>Nijedna utakmica nije imala kombinaciju tipova na koju se pravilo primenjuje.</p> : (
-            <ul className="space-y-0.5">
-              {d.ruleLog.map((r, i) => (
-                <li key={i}><span className="text-text">{r.match}</span>: našao {r.found.join(", ")} → sačuvano: <b className="text-text">{r.kept.length ? r.kept.join(", ") : "ništa"}</b> <span>({r.note})</span></li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-      {d.comboCatalog && (
-        <div className="mt-3 text-xs text-muted" data-testid="combo-catalog">
-          <p className="mb-1">Spojena tržišta „ishod + golovi“ u OddsPapi katalogu: <b className="text-text">{d.comboCatalog.length}</b></p>
-          {d.comboCatalog.length === 0 ? <p>Nema nijednog – OddsPapi ne prenosi spojene tipove.</p> : (
-            <ul className="space-y-0.5">
-              {d.comboCatalog.map((c) => (
-                <li key={c.id}><span className="text-text">{c.id}</span> {c.name} · ishodi: {c.outcomes.join(", ")} · {scan.providerName}: {c.offeredByBookmaker ? <b className="text-won">nudi ({c.offeredByBookmaker} utakmica)</b> : "ne nudi"}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-      {markets && markets.length > 0 && (
-        <div className="mt-3 text-xs text-muted">
-          <p className="mb-1">Tržišta koja {scan.providerName} ima (najčešća):</p>
-          <ul className="grid gap-x-4 sm:grid-cols-2">
-            {markets.map((m) => <li key={m.id}>{m.id}: {m.name} × {m.count}</li>)}
-          </ul>
-        </div>
-      )}
-    </details>
-  );
-}
+const COMPARE_COLS = ["HOME", "AWAY", "OVER_1_5", "UNDER_3_5", "UNDER_1_5", "OVER_3_5"];
+const TYPE_LABEL: Record<string, string> = { HOME: "1", DRAW: "X", AWAY: "2", OVER_1_5: "2+", UNDER_3_5: "0–3", UNDER_1_5: "0–1", OVER_3_5: "4+" };
 
 function KontraDiagnosticsBox({ scan }: { scan: ScanStatusDto }) {
   const k = scan.diagnostics?.kontra;
@@ -514,7 +406,7 @@ function KontraDiagnosticsBox({ scan }: { scan: ScanStatusDto }) {
   const noTrigger = Math.max(0, scan.fixturesScanned - scan.fixturesExcluded - k.withTrigger);
   return (
     <details className="mt-4 rounded-lg border border-line px-3 py-2 text-sm" data-testid="kontra-diagnostics">
-      <summary className="cursor-pointer text-muted">Dijagnostika Kontra robota</summary>
+      <summary className="cursor-pointer text-muted">Dijagnostika skeniranja</summary>
       <ul className="mt-3 space-y-0.5 text-sm">
         <li>Pregledano utakmica: <b>{scan.fixturesScanned}</b> (izbačeno virtuelno i sl.: {scan.fixturesExcluded})</li>
         <li>Bez okidača (ni 2+ ni 0–3 ispod {k.triggerMax.toFixed(2)}): <b>{noTrigger}</b></li>
@@ -594,12 +486,12 @@ function CompareBox() {
                 <p className="mb-2 font-medium">{r.match}</p>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[480px] text-left text-sm">
-                    <thead className="text-muted"><tr><th className="py-1 font-medium">Kladionica</th>{["HOME", "AWAY", "OVER_1_5", "UNDER_3_5"].map((t) => <th key={t} className="font-medium">{TYPE_LABEL[t]}</th>)}</tr></thead>
+                    <thead className="text-muted"><tr><th className="py-1 font-medium">Kladionica</th>{COMPARE_COLS.map((t) => <th key={t} className="font-medium">{TYPE_LABEL[t]}</th>)}</tr></thead>
                     <tbody>
                       {r.bookmakers.map((b) => (
                         <tr key={b.slug} className="border-t border-line/50">
                           <td className="py-1.5">{b.name}{!b.present && <span className="ml-1 text-xs text-muted">(nema utakmicu)</span>}</td>
-                          {["HOME", "AWAY", "OVER_1_5", "UNDER_3_5"].map((t) => <td key={t} className="tabular-nums">{b.odds[t]?.toFixed(2) ?? <span className="text-muted">—</span>}</td>)}
+                          {COMPARE_COLS.map((t) => <td key={t} className="tabular-nums">{b.odds[t]?.toFixed(2) ?? <span className="text-muted">—</span>}</td>)}
                         </tr>
                       ))}
                     </tbody>

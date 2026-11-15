@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeKontraStats, computeStats, mirrorRow, type StatRow } from "@/lib/stats/compute";
+import { computeKontraStats, computeStats, type StatRow } from "@/lib/stats/compute";
 import { settingsSchema } from "@/lib/settings";
 
 const row = (marketType: string, status: string, odds: number, triggerOdds: number | null, extra: Partial<StatRow> = {}): StatRow => {
@@ -43,20 +43,11 @@ describe("Kontra statistika", () => {
     expect(by["1.11-1.20"].byType.find((t) => t.key === "UNDER_1_5")!.won).toBe(1);
   });
 
-  it("poređenje: šta bi osnovni tip na istoj utakmici doneo", () => {
-    const c = Object.fromEntries(k.comparison.map((x) => [x.key, x]));
-    expect(c.kontra.net).toBe(2800);
-    expect([c.osnovni.won, c.osnovni.lost, c.osnovni.void, c.osnovni.net]).toEqual([3, 2, 1, -1490]); // 80+280+150−1000−1000
-    expect(c["osnovni-UNDER_1_5"].net).toBe(-640);
-    expect(c["osnovni-OVER_3_5"].net).toBe(-850);
-  });
-
-  it("mirrorRow: suprotan ishod po kvoti okidača; bez okidača nema poređenja", () => {
-    expect(mirrorRow(row("UNDER_1_5", "LOST", 4, 1.2))).toMatchObject({ marketType: "OVER_1_5", status: "WON", odds: 1.2, gross: 1200, net: 200 });
-    expect(mirrorRow(row("OVER_3_5", "WON", 4, 1.1))).toMatchObject({ marketType: "UNDER_3_5", status: "LOST", net: -1000 });
-    expect(mirrorRow(row("OVER_3_5", "VOID", 4, 1.1))).toMatchObject({ status: "VOID", net: 0 });
-    expect(mirrorRow(row("UNDER_1_5", "WON", 4, null))).toBeNull();
-    expect(mirrorRow(row("OVER_1_5", "WON", 1.2, null))).toBeNull();
+  it("po kvoti 0–1 / 4+", () => {
+    const by = Object.fromEntries(k.byOdds.map((b) => [b.key, b]));
+    expect([by["2.50-3.49"].total, by["2.50-3.49"].lost, by["2.50-3.49"].void]).toEqual([3, 1, 1]); // 3.0, 3.2, 3.1
+    expect([by["3.50-4.49"].total, by["3.50-4.49"].won, by["3.50-4.49"].net]).toEqual([4, 2, 3800]); // 4.2, 4.0, 3.8, 3.6
+    expect(by["6+"].total).toBe(0);
   });
 
   it("opšta statistika: kontra tipovi u tabeli po tipu, ali ne u matrici tip × kvota (1.01–1.30)", () => {
