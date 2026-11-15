@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  role         Role        @default(ADMIN)
+  createdAt    DateTime    @default(now())
+  sessions     Session[]
+  auditLogs    AuditLog[]
+  robotScans   RobotScan[]
+  filterSets   FilterSet[]
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+/// Sesija prijave. U cookie-ju je nasumičan token, u bazi samo njegov SHA-256 hash.
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+}
+
+/// Globalna podešavanja aplikacije (jedan red, id = 1).
+model Settings {
+  id                         Int      @id @default(1)
+  maxOdds                    Decimal  @default(1.30) @db.Decimal(4, 2)
+  stakePerSelection          Decimal  @default(1000) @db.Decimal(12, 2)
+  currency                   String   @default("RSD")
+  timezone                   String   @default("Europe/Belgrade")
+  /// Zaštita kvote kod API provajdera: robot staje kada potroši ovoliko zahteva u jednom skeniranju.
+  maxRequestsPerScan         Int      @default(60)
+  /// Result Tracker: najmanji razmak (min) između dve provere istog dana kod API-Football-a
+  resultCheckMinutes         Int      @default(15)
+  /// Result Tracker: najviše API-Football zahteva dnevno (Pro paket: 7.500/dan)
+  apiFootballDailyCap        Int      @default(200)
+  /// Result Tracker: koliko OddsPapi provera rezultata dnevno (rezervni izvor)
+  oddsPapiResultChecksPerDay Int      @default(10)
+  /// Pravilo: ako su za istu utakmicu i 2+ i 0–3 do maks. kvote, izbacuju se oba tipa
+  excludeGoalsPair           Boolean  @default(true)
+  /// Pravilo: 1/2 + jedan tip golova se igra kao spojeni tip (npr. „1&2+“) – ako kvota ne postoji, utakmica se preskače
+  combineResultGoals         Boolean  @default(true)
+  /// Šta kad izvor nema kvotu spojenog tipa: SKIP = preskoči utakmicu, WINNER_ONLY = igraj samo 1/2, BOTH_SINGLE = igraj oba tipa odvojeno
+  comboFallback              String   @default("WINNER_ONLY")
+  updatedAt                  DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entityType String
+  entityId   String
+  action     String
+  oldValue   Json?
+  newValue   Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+/// Tipovi koje robot prati: 1, X, 2, 2+ (više od 1.5 gola), 0–3 (manje od 3.5 gola).
+enum MarketType {
+  HOME
+  DRAW
+  AWAY
+  OVER_1_5
+  UNDER_3_5
+  /// Spojeni tipovi (jedno tržište kladionice „ishod + golovi“)
+  HOME_OVER_1_5
+  HOME_UNDER_3_5
+  AWAY_OVER_1_5
+  AWAY_UNDER_3_5
+}
+
+enum ScanStatus {
+  RUNNING
+  COMPLETED
+  STOPPED
+  FAILED
+}
+
+model Match {
+  id                    String             @id @default(cuid())
+  provider              String
+  externalId            String
+  homeTeam              String
+  awayTeam              String
+  competition           String
+  country               String?
+  externalCompetitionId String?
+  kickoffTime           DateTime
+  sportType             String             @default("FOOTBALL")
+  matchStatus           String             @default("NOT_STARTED")
+  isDemo                Boolean            @default(false)
+  /// Povezana utakmica kod API-Football-a i koliko je sigurno poklapanje (HIGH/MEDIUM)
+  apiFootballId         Int?
+  resultMatchConfidence String?
+  finalHomeScore        Int?
+  finalAwayScore        Int?
+  resultUpdates         ResultUpdate[]
+  comboCandidates       ComboCandidate[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  selections            MarketSelection[]
+  trackedSelections     TrackedSelection[]
+
+  @@unique([provider, externalId])
+  @@index([kickoffTime])
+}
+
+/// Kvota u trenutku skeniranja. Nikada se ne prepisuje: svako skeniranje pravi nove zapise.
+model MarketSelection {
+  id             String               @id @default(cuid())
+  matchId        String
+  match          Match                @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  scanId         String
+  scan           RobotScan            @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  marketType     MarketType
+  odds           Decimal              @db.Decimal(8, 4)
+  oddsTimestamp  DateTime
+  source         String
+  isDemo         Boolean              @default(false)
+  /// Izbačeno po pravilu (npr. GOALS_PAIR = i 2+ i 0–3 za istu utakmicu) – ne prikazuje se i ne ulazi u statistiku
+  excludedReason String?
+  /// Kvotu je ručno uneo korisnik (npr. spojeni tip sa sajta kladionice)
+  manualOdds     Boolean              @default(false)
+  createdAt      DateTime             @default(now())
+  tracked        TrackedSelection[]
+  filterEntries  FilterSetSelection[]
+
+  @@unique([scanId, matchId, marketType])
+  @@index([matchId])
+}
+
+model RobotScan {
+  id               String            @id @default(cuid())
+  userId           String?
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  provider         String
+  isDemo           Boolean           @default(false)
+  periodLabel      String
+  startDate        DateTime
+  endDate          DateTime
+  startedAt        DateTime          @default(now())
+  finishedAt       DateTime?
+  status           ScanStatus        @default(RUNNING)
+  stopRequested    Boolean           @default(false)
+  maxOddsUsed      Decimal           @db.Decimal(4, 2)
+  fixturesTotal    Int?
+  fixturesScanned  Int               @default(0)
+  fixturesExcluded Int               @default(0)
+  /// Utakmice izbačene jer su imale i 2+ i 0–3 do maks. kvote
+  pairsExcluded    Int               @default(0)
+  /// Utakmice preskočene jer izvor nema kvotu za spojeni tip
+  comboSkipped     Int               @default(0)
+  /// Napravljeni spojeni tipovi
+  combosCreated    Int               @default(0)
+  selectionsFound  Int               @default(0)
+  requestsUsed     Int               @default(0)
+  errors           Json              @default("[]")
+  /// Tehnički podaci za proveru izvora (broj kvota po tipu, tržišta izvora…)
+  diagnostics      Json              @default("{}")
+  updatedAt        DateTime          @updatedAt
+  selections       MarketSelection[]
+  comboCandidates  ComboCandidate[]
+
+  @@index([startedAt])
+  @@index([status])
+}
+
+enum SelectionStatus {
+  PENDING
+  LIVE
+  WON
+  LOST
+  POSTPONED
+  VOID
+  NEEDS_REVIEW
+}
+
+enum FilterSetStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
+/// Tip koji se prati (jedna utakmica + jedan tip). Obračun (faza 4) je isti bez obzira u koliko je filtera.
+model TrackedSelection {
+  id                String               @id @default(cuid())
+  matchId           String
+  match             Match                @relation(fields: [matchId], references: [id], onDelete: Restrict)
+  marketSelectionId String
+  marketSelection   MarketSelection      @relation(fields: [marketSelectionId], references: [id], onDelete: Restrict)
+  marketType        MarketType
+  selection         String
+  originalOdds      Decimal              @db.Decimal(8, 4)
+  status            SelectionStatus      @default(PENDING)
+  finalHomeScore    Int?
+  finalAwayScore    Int?
+  resultSource      String?
+  settledAt         DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  filterEntries     FilterSetSelection[]
+
+  @@unique([matchId, marketType])
+  @@index([status])
+}
+
+/// Imenovani filter (npr. "Vikend – 50 tipova") sa ulogom po tipu.
+model FilterSet {
+  id                String               @id @default(cuid())
+  userId            String?
+  user              User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name              String
+  status            FilterSetStatus      @default(ACTIVE)
+  stakePerSelection Decimal              @db.Decimal(12, 2)
+  currency          String               @default("RSD")
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  entries           FilterSetSelection[]
+
+  @@index([status, createdAt])
+}
+
+/// Tip u filteru. Kvota i ulog su nepromenljiv snimak iz trenutka dodavanja.
+model FilterSetSelection {
+  id                 String           @id @default(cuid())
+  filterSetId        String
+  filterSet          FilterSet        @relation(fields: [filterSetId], references: [id], onDelete: Cascade)
+  trackedSelectionId String
+  trackedSelection   TrackedSelection @relation(fields: [trackedSelectionId], references: [id], onDelete: Restrict)
+  marketSelectionId  String
+  marketSelection    MarketSelection  @relation(fields: [marketSelectionId], references: [id], onDelete: Restrict)
+  oddsSnapshot       Decimal          @db.Decimal(8, 4)
+  stake              Decimal          @db.Decimal(12, 2)
+  settlementStatus   SelectionStatus  @default(PENDING)
+  grossReturn        Decimal?         @db.Decimal(14, 2)
+  netProfit          Decimal?         @db.Decimal(14, 2)
+  addedAt            DateTime         @default(now())
+  /// Uklonjeno iz prikaza filtera (istorija ostaje).
+  removedAt          DateTime?
+
+  @@unique([filterSetId, trackedSelectionId])
+  @@index([filterSetId, removedAt])
+}
+
+/// Svaki rezultat koji je izvor vratio (istorija, sa izvorom i vremenom).
+model ResultUpdate {
+  id          String   @id @default(cuid())
+  matchId     String
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  homeScore   Int?
+  awayScore   Int?
+  matchStatus String
+  source      String
+  detail      Json?
+  fetchedAt   DateTime @default(now())
+
+  @@index([matchId, fetchedAt])
+}
+
+/// Stanje pozadinskih poslova (zaključavanje, brojači kvota, poslednje provere).
+model JobState {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+/// Utakmica kojoj treba spojeni tip („1&2+“…), a izvor nema njegovu kvotu – korisnik je unosi ručno.
+model ComboCandidate {
+  id         String     @id @default(cuid())
+  scanId     String
+  scan       RobotScan  @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  matchId    String
+  match      Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  comboType  MarketType
+  winnerOdds Decimal    @db.Decimal(8, 4)
+  goalsOdds  Decimal    @db.Decimal(8, 4)
+  source     String
+  createdAt  DateTime   @default(now())
+
+  @@unique([scanId, matchId])
+  @@index([matchId])
+}

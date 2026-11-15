@@ -1,0 +1,162 @@
+import "server-only";
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { log } from "@/lib/log";
+import { COMBO_PARTS, COMBO_TYPES, isCombo, isValidOdds, MARKET_LABELS, MARKET_TYPES, type ComboTypeCode, type MarketTypeCode } from "@/lib/odds";
+import { isRealFootball } from "./football";
+import { applyMatchRules, type ComboFallback } from "./rules";
+import { getProvider } from "./providers";
+import { ProviderError, RequestLimitReached, type ScanContext } from "./types";
+
+/** Skeniranje koje nije javilo napredak duže od ovoga smatra se prekinutim (npr. restart servera). */
+export const STALE_MS = 3 * 60_000;
+
+export async function markStaleScans() {
+  await prisma.robotScan.updateMany({
+    where: { status: "RUNNING", updatedAt: { lt: new Date(Date.now() - STALE_MS) } },
+    data: { status: "FAILED", finishedAt: new Date(), errors: ["Skeniranje je prekinuto (restart servera ili greška)."] },
+  });
+}
+
+async function appendError(scanId: string, msg: string) {
+  const s = await prisma.robotScan.findUnique({ where: { id: scanId }, select: { errors: true } });
+  const list = Array.isArray(s?.errors) ? (s!.errors as string[]) : [];
+  await prisma.robotScan.update({ where: { id: scanId }, data: { errors: [...list, msg].slice(-20) } });
+}
+
+/** Pokreće skeniranje. Ne baca grešku – sve greške se upisuju u RobotScan. */
+export async function runScan(scanId: string): Promise<void> {
+  const scan = await prisma.robotScan.findUnique({ where: { id: scanId } });
+  if (!scan || scan.status !== "RUNNING") return;
+  const provider = getProvider(scan.provider);
+  if (!provider) {
+    await prisma.robotScan.update({ where: { id: scanId }, data: { status: "FAILED", finishedAt: new Date(), errors: ["Izvor kvota nije dostupan."] } });
+    return;
+  }
+  const maxOdds = scan.maxOddsUsed.toNumber();
+  const settings = await prisma.settings.findUnique({ where: { id: 1 } });
+
+  const diag: Record<string, unknown> = {};
+  const ruleLog: { match: string; found: string[]; kept: string[]; note: string }[] = [];
+  const priceCounts: Record<string, { total: number; valid: number; min: number | null }> = {};
+  for (const m of MARKET_TYPES) priceCounts[m] = { total: 0, valid: 0, min: null };
+  let lastStopCheck = 0;
+  let stop = false;
+  const ctx: ScanContext = {
+    maxRequests: settings?.maxRequestsPerScan ?? 60,
+    async shouldStop() {
+      if (stop) return true;
+      if (Date.now() - lastStopCheck < 500) return false;
+      lastStopCheck = Date.now();
+      const s = await prisma.robotScan.findUnique({ where: { id: scanId }, select: { stopRequested: true } });
+      stop = !!s?.stopRequested;
+      return stop;
+    },
+    async setTotal(n) {
+      await prisma.robotScan.update({ where: { id: scanId }, data: { fixturesTotal: n } });
+    },
+    async countRequest() {
+      await prisma.robotScan.update({ where: { id: scanId }, data: { requestsUsed: { increment: 1 } } });
+    },
+    async warn(msg) {
+      await appendError(scanId, msg);
+    },
+    async diagnostic(data) {
+      Object.assign(diag, data);
+    },
+  };
+
+  let finalStatus: "COMPLETED" | "STOPPED" | "FAILED" = "COMPLETED";
+  try {
+    for await (const fx of provider.scan({ from: scan.startDate, to: scan.endDate }, ctx)) {
+      const inRange = fx.kickoffTime >= scan.startDate && fx.kickoffTime < scan.endDate;
+      if (!inRange || !isRealFootball(fx)) {
+        await prisma.robotScan.update({ where: { id: scanId }, data: { fixturesScanned: { increment: 1 }, fixturesExcluded: { increment: 1 } } });
+        continue;
+      }
+      for (const m of MARKET_TYPES) {
+        const p = fx.odds[m]?.price;
+        if (typeof p !== "number") continue;
+        priceCounts[m].total += 1;
+        priceCounts[m].min = priceCounts[m].min == null ? p : Math.min(priceCounts[m].min!, p);
+      }
+      const rawValid = MARKET_TYPES.filter((m) => fx.odds[m] && isValidOdds(fx.odds[m]!.price, maxOdds));
+      for (const m of rawValid) priceCounts[m].valid += 1;
+      const combosAvail: Partial<Record<ComboTypeCode, number>> = {};
+      for (const c of COMBO_TYPES) if (fx.odds[c]) combosAvail[c] = fx.odds[c]!.price;
+      const rule = applyMatchRules(rawValid, combosAvail, {
+        excludeGoalsPair: settings?.excludeGoalsPair ?? true,
+        combineResultGoals: settings?.combineResultGoals ?? true,
+        comboFallback: (settings?.comboFallback as ComboFallback | undefined) ?? "WINNER_ONLY",
+      });
+      const valid: MarketTypeCode[] = [...rule.singles, ...(rule.combo ? [rule.combo] : [])];
+      if ((rule.pairExcluded || rule.comboMissing || rule.combo) && ruleLog.length < 300) {
+        ruleLog.push({
+          match: `${fx.homeTeam} – ${fx.awayTeam}`,
+          found: rawValid.map((m) => `${MARKET_LABELS[m]} @ ${fx.odds[m]!.price.toFixed(2)}`),
+          kept: valid.map((m) => `${MARKET_LABELS[m]}${isCombo(m) ? ` @ ${fx.odds[m]!.price.toFixed(2)}` : ""}`),
+          note: [rule.pairExcluded ? "2+ i 0–3 zajedno → izbačeni" : null, rule.combo ? "spojeni tip po kvoti izvora" : null,
+            rule.comboMissing ? `nema kvote za ${MARKET_LABELS[rule.wanted!]} → kandidat za ručni unos` : null].filter(Boolean).join("; "),
+        });
+      }
+      if (rule.pairExcluded || rule.comboMissing || rule.combo) {
+        await prisma.robotScan.update({
+          where: { id: scanId },
+          data: {
+            pairsExcluded: { increment: rule.pairExcluded ? 1 : 0 },
+            comboSkipped: { increment: rule.comboMissing ? 1 : 0 },
+            combosCreated: { increment: rule.combo ? 1 : 0 },
+          },
+        });
+      }
+      let created = 0;
+      if (valid.length || rule.wanted) {
+        const match = await prisma.match.upsert({
+          where: { provider_externalId: { provider: provider.matchNamespace ?? provider.id, externalId: fx.externalId } },
+          create: {
+            provider: provider.matchNamespace ?? provider.id, externalId: fx.externalId, homeTeam: fx.homeTeam, awayTeam: fx.awayTeam,
+            competition: fx.competition, country: fx.country, externalCompetitionId: fx.externalCompetitionId,
+            kickoffTime: fx.kickoffTime, isDemo: provider.isDemo,
+          },
+          update: { homeTeam: fx.homeTeam, awayTeam: fx.awayTeam, competition: fx.competition, country: fx.country, kickoffTime: fx.kickoffTime },
+        });
+        const res = await prisma.marketSelection.createMany({
+          data: valid.map((m) => ({
+            matchId: match.id, scanId, marketType: m, odds: new Prisma.Decimal(fx.odds[m]!.price),
+            oddsTimestamp: fx.odds[m]!.changedAt, source: provider.sourceLabel, isDemo: provider.isDemo,
+          })),
+          skipDuplicates: true,
+        });
+        created = res.count;
+        // kandidat za ručni unos spojene kvote („1&2+“ …)
+        if (rule.wanted) {
+          const [w, g] = COMBO_PARTS[rule.wanted];
+          await prisma.comboCandidate.upsert({
+            where: { scanId_matchId: { scanId, matchId: match.id } },
+            create: { scanId, matchId: match.id, comboType: rule.wanted, winnerOdds: fx.odds[w]!.price, goalsOdds: fx.odds[g]!.price, source: provider.sourceLabel },
+            update: {},
+          });
+        }
+      }
+      await prisma.robotScan.update({
+        where: { id: scanId },
+        data: { fixturesScanned: { increment: 1 }, selectionsFound: { increment: created } },
+      });
+    }
+    if (await ctx.shouldStop()) finalStatus = "STOPPED";
+  } catch (e) {
+    if (e instanceof RequestLimitReached) {
+      finalStatus = "STOPPED";
+      await appendError(scanId, e.message);
+    } else {
+      finalStatus = "FAILED";
+      const msg = e instanceof ProviderError ? e.message : "Neočekivana greška robota.";
+      log.error("robot", "skeniranje palo", { scanId, error: (e as Error).message });
+      await appendError(scanId, msg);
+    }
+  }
+  await prisma.robotScan.update({
+    where: { id: scanId },
+    data: { status: finalStatus, finishedAt: new Date(), diagnostics: JSON.parse(JSON.stringify({ priceCounts, ...diag, ruleLog })) },
+  });
+}
