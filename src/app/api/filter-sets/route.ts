@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 export const GET = () => handle(async () => Response.json(await listFilterSets(prisma)));
 
 export const POST = (req: Request) => handle(async (user) => {
-  const { name } = await body(req);
+  const { name, strategy } = await body(req);
   const settings = await getSettings();
-  const id = await createFilterSet(prisma, { name, userId: user.id, stake: settings.stakePerSelection });
+  const id = await createFilterSet(prisma, { name, userId: user.id, stake: settings.stakePerSelection, strategy });
   return Response.json({ id }, { status: 201 });
 });

@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { COMBO_PARTS, MARKET_LABELS, type ComboTypeCode } from "@/lib/odds";
-import { addEntry, FilterError } from "@/lib/filter/service";
+import { addEntry, FilterError, getActiveSet } from "@/lib/filter/service";
 
 export const MANUAL_SOURCE = "AdmiralBet · ručni unos";
 
@@ -53,6 +53,8 @@ export async function addManualCombo(db: PrismaClient, input: { filterSetId: str
   const cand = await db.comboCandidate.findUnique({ where: { id: input.candidateId }, include: { match: true } });
   if (!cand) throw new FilterError("Kandidat ne postoji.", 404);
   if (cand.match.kickoffTime <= now) throw new FilterError("Utakmica je već počela – spojeni tip ne može da se doda.");
+  const set = await getActiveSet(db, input.filterSetId);
+  if (set.strategy === "KONTRA") throw new FilterError("Spojeni tipovi se ne koriste u Kontra filteru.");
 
   const key = { scanId_matchId_marketType: { scanId: cand.scanId, matchId: cand.matchId, marketType: cand.comboType } };
   const existing = await db.marketSelection.findUnique({ where: key, include: { _count: { select: { filterEntries: true } } } });

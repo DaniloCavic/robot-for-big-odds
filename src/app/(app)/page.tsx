@@ -8,13 +8,18 @@ import { prisma } from "@/lib/db";
 import { activeEntriesWhere, entrySummary } from "@/lib/results/queries";
 
 export default async function DashboardPage() {
-  const [settings, [last], active, planned, sum] = await Promise.all([
+  // Osnovni i Kontra se ne mešaju: kartice gore su Osnovni robot, Kontra ima svoj red
+  const osnovni = { removedAt: null, filterSet: { status: { not: "DELETED" as const }, strategy: "OSNOVNI" as const } };
+  const [settings, [last], active, planned, sum, kontra, kontraOpen] = await Promise.all([
     getSettings(),
     recentScans(1),
-    prisma.trackedSelection.count({ where: { status: { in: ["PENDING", "LIVE"] }, filterEntries: { some: { removedAt: null, filterSet: { status: { not: "DELETED" } } } } } }),
-    prisma.filterSetSelection.aggregate({ where: { removedAt: null, settlementStatus: { in: ["PENDING", "LIVE"] }, filterSet: { status: { not: "DELETED" } } }, _sum: { stake: true } }),
-    entrySummary(activeEntriesWhere),
+    prisma.trackedSelection.count({ where: { status: { in: ["PENDING", "LIVE"] }, filterEntries: { some: osnovni } } }),
+    prisma.filterSetSelection.aggregate({ where: { ...osnovni, settlementStatus: { in: ["PENDING", "LIVE"] } }, _sum: { stake: true } }),
+    entrySummary({ ...activeEntriesWhere, filterSet: { status: { not: "DELETED" }, strategy: "OSNOVNI" } }),
+    entrySummary({ ...activeEntriesWhere, filterSet: { status: { not: "DELETED" }, strategy: "KONTRA" } }),
+    prisma.filterSetSelection.count({ where: { removedAt: null, settlementStatus: { in: ["PENDING", "LIVE"] }, filterSet: { status: { not: "DELETED" }, strategy: "KONTRA" } } }),
   ]);
+  const kontraSettled = kontra.won + kontra.lost + kontra.void;
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Pregled sistema, poslednjeg skeniranja i tipova.">
@@ -29,6 +34,18 @@ export default async function DashboardPage() {
         <StatCard label="Prolaznost" value={sum.passRate == null ? "—" : `${sum.passRate.toFixed(1)}%`} hint="WON / (WON + LOST)" tone="won" />
         <StatCard label="Neto profit / gubitak" value={(sum.netProfit > 0 ? "+" : "") + formatRsd(sum.netProfit)} hint={`Uloženo ${formatRsd(sum.settledStake)} · ${formatRsd(settings.stakePerSelection)} po tipu`} tone={sum.netProfit > 0 ? "won" : sum.netProfit < 0 ? "lost" : "default"} />
       </div>
+
+      {kontraSettled + kontraOpen > 0 && (
+        <div className="mt-4" data-testid="dashboard-kontra">
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted"><span className="rounded-md bg-pending/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-pending">KONTRA</span> Kontra robot (0–1, 4+) – odvojeno od osnovnog</h2>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label="Kontra – aktivni tipovi" value={String(kontraOpen)} hint="Na čekanju i uživo" tone="live" />
+            <StatCard label="Kontra – završeni tipovi" value={String(kontraSettled)} hint={`Prošlo / palo: ${kontra.won} / ${kontra.lost}${kontra.void ? ` · vraćeno ${kontra.void}` : ""}`} />
+            <StatCard label="Kontra – prolaznost" value={kontra.passRate == null ? "—" : `${kontra.passRate.toFixed(1)}%`} hint="WON / (WON + LOST)" tone="won" />
+            <StatCard label="Kontra – neto" value={(kontra.netProfit > 0 ? "+" : "") + formatRsd(kontra.netProfit)} hint={`Uloženo ${formatRsd(kontra.settledStake)}`} tone={kontra.netProfit > 0 ? "won" : kontra.netProfit < 0 ? "lost" : "default"} />
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
