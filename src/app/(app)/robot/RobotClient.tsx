@@ -21,7 +21,6 @@ type PeriodKey = (typeof PERIODS)[number][0];
 const KONTRA_TYPES = ["0–1", "4+"] as const;
 
 const SKIP_LABELS: Record<string, string> = {
-  FAVORIT_1_2: "Preskočeno – favorit 1/2",
   OBA_GOLA: "Preskočeno – oba gola",
   NEMA_KONTRA_KVOTE: "Preskočeno – nema kontra kvote",
 };
@@ -40,8 +39,8 @@ function DemoBadge() {
   return <span className="rounded-md bg-live/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-live">DEMO</span>;
 }
 
-export function RobotClient({ providers: serverProviders, initialScans, today, maxRequests, kontraTrigger = 1.3, kontraFavorite = 1.3 }: {
-  providers: Provider[]; initialScans: ScanStatusDto[]; today: string; maxRequests: number; kontraTrigger?: number; kontraFavorite?: number;
+export function RobotClient({ providers: serverProviders, initialScans, today, maxRequests, kontraTrigger = 1.3 }: {
+  providers: Provider[]; initialScans: ScanStatusDto[]; today: string; maxRequests: number; kontraTrigger?: number;
 }) {
   const [source, setSource] = useState<SourceStatus | null>(null);
   const [touched, setTouched] = useState(false);
@@ -215,7 +214,7 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
 
         <p className="mt-6 rounded-xl border border-line bg-panel-2/50 px-4 py-3 text-sm text-muted" data-testid="rules-info">
           Okidač: <b className="text-text">2+</b> ili <b className="text-text">0–3</b> do <b className="text-text">{kontraTrigger.toFixed(2)}</b> → igra se <b className="text-accent">0–1</b> ili <b className="text-accent">4+</b> po kvoti kladionice.
-          Preskače se ako je 1 ili 2 do {kontraFavorite.toFixed(2)}, ako su oba (2+ i 0–3) ispod praga ili ako nema kvote za 0–1 / 4+. Pragovi: Podešavanja.
+          Kvote za 1 i 2 se ne gledaju. Preskače se ako su oba (2+ i 0–3) do praga ili ako nema kvote za 0–1 / 4+. Prag: Podešavanja.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {!running ? (
@@ -416,7 +415,7 @@ function KontraDiagnosticsBox({ scan }: { scan: ScanStatusDto }) {
             {Object.entries(SKIP_LABELS).map(([r, label]) => <li key={r}>{label}: <b className="text-text">{k.skips[r as KontraSkipReason] ?? 0}</b></li>)}
           </ul>
         </li>
-        <li className="text-xs text-muted">Kladionica nudi 0–1 na {k.counterOffered.UNDER_1_5 ?? 0} utakmica, 4+ na {k.counterOffered.OVER_3_5 ?? 0}. Prag okidača {k.triggerMax.toFixed(2)}, prag favorita 1/2 {k.favoriteMax.toFixed(2)}.</li>
+        <li className="text-xs text-muted">Kladionica nudi 0–1 na {k.counterOffered.UNDER_1_5 ?? 0} utakmica, 4+ na {k.counterOffered.OVER_3_5 ?? 0}. Prag okidača {k.triggerMax.toFixed(2)}.</li>
       </ul>
       {scan.diagnostics?.marketMap && <p className="mt-3 break-all text-xs text-muted">Mapiranje tržišta: {JSON.stringify(scan.diagnostics.marketMap)}</p>}
       {log.length > 0 && (

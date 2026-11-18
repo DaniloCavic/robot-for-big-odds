@@ -65,27 +65,23 @@ test("podešavanja: prag okidača iznad 1.50 se odbija, prag i ulog se čuvaju t
   await page.goto("/podesavanja");
   await expect(page.getByLabel("Maksimalna kvota")).toHaveCount(0); // pravila osnovnog robota se ovde ne podešavaju
   const trig = page.getByLabel("Prag okidača (2+ ili 0–3)");
-  const fav = page.getByLabel("Prag favorita 1/2");
+  await expect(page.getByLabel("Prag favorita 1/2")).toHaveCount(0); // 1 i 2 se ne gledaju
   const stake = page.getByLabel("Ulog po tipu (RSD)");
   await expect(trig).toHaveValue("1.30");
-  await expect(fav).toHaveValue("1.30");
 
   await trig.fill("1,60");
   await page.getByRole("button", { name: "Sačuvaj" }).click();
   await expect(page.getByRole("alert").filter({ hasText: /./ })).toContainText("najviše 1.50");
 
   await trig.fill("1,25");
-  await fav.fill("1.40");
   await stake.fill("500");
   await page.getByRole("button", { name: "Sačuvaj" }).click();
   await expect(page.getByRole("status")).toHaveText("Sačuvano.");
   await page.reload();
   await expect(trig).toHaveValue("1.25");
-  await expect(fav).toHaveValue("1.40");
   await expect(stake).toHaveValue("500.00");
 
   await trig.fill("1.30");
-  await fav.fill("1.30");
   await stake.fill("1000");
   await page.getByRole("button", { name: "Sačuvaj" }).click();
   await expect(page.getByRole("status")).toHaveText("Sačuvano.");

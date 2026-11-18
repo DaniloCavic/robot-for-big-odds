@@ -40,7 +40,8 @@ test("DEMO skeniranje: samo 0–1 i 4+ sa kvotom okidača, virtuelni fudbal izba
   const found = Number(await page.getByTestId("found").textContent());
   expect(found).toBeGreaterThan(0);
   expect(Number(await page.getByTestId("kontra-trigger").textContent())).toBeGreaterThanOrEqual(found);
-  await expect(page.getByTestId("kontra-skip-FAVORIT_1_2")).not.toHaveText("0");
+  await expect(page.getByTestId("kontra-skip-OBA_GOLA")).not.toHaveText("0");
+  await expect(page.getByTestId("kontra-skip-FAVORIT_1_2")).toHaveCount(0); // 1 i 2 se ne gledaju
   await expect(page.getByText("Izbačeno (virtuelno i sl.)").locator("..").locator("dd")).not.toHaveText("0");
   await expect(page.getByText("Virtual")).toHaveCount(0);
 

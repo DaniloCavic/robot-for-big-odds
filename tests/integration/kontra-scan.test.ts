@@ -59,26 +59,26 @@ describe("Kontra skeniranje (demo izvor)", () => {
     expect(s.selectionsFound).toBe(exp.length);
   });
 
-  it("nikad ne ubaci utakmicu gde je 1 ili 2 ≤ 1.30, ni gde su oba gola ≤ 1.30; preskoci se broje", async () => {
+  it("nikad ne ubaci utakmicu gde su oba gola ≤ 1.30; 1 i 2 se ne gledaju; preskoci se broje", async () => {
     const scan = await newScan("KONTRA");
     await runScans([scan.id]);
     const byExt = new Map(demoFixtures(FROM, TO).map((f) => [f.externalId, f]));
     for (const x of await selectionsOf(scan.id)) {
       const o = byExt.get(x.ext)!.odds;
-      expect(o.HOME === undefined || o.HOME.price > 1.3).toBe(true);
-      expect(o.AWAY === undefined || o.AWAY.price > 1.3).toBe(true);
       expect((o.OVER_1_5?.price ?? 9) <= 1.3 && (o.UNDER_3_5?.price ?? 9) <= 1.3).toBe(false);
     }
     const s = await db.robotScan.findUniqueOrThrow({ where: { id: scan.id } });
     const k = (s.diagnostics as { kontra: { withTrigger: number; played: number; skips: Record<string, number> } }).kontra;
     const exp = expectedKontra();
     const count = (r: string) => exp.filter((x) => x.d.skipReason === r).length;
-    expect(k.skips).toEqual({ OBA_GOLA: count("OBA_GOLA"), FAVORIT_1_2: count("FAVORIT_1_2"), NEMA_KONTRA_KVOTE: count("NEMA_KONTRA_KVOTE") });
+    expect(k.skips).toEqual({ OBA_GOLA: count("OBA_GOLA"), NEMA_KONTRA_KVOTE: count("NEMA_KONTRA_KVOTE") });
     expect(k.withTrigger).toBe(exp.filter((x) => x.d.pick || x.d.skipReason).length);
     expect(k.played).toBe(exp.filter((x) => x.d.pick).length);
-    // demo podaci pokrivaju sva tri razloga preskoka
-    expect(k.skips.FAVORIT_1_2).toBeGreaterThan(0);
     expect(k.skips.OBA_GOLA).toBeGreaterThan(0);
+    // sada se igraju i utakmice sa jakim favoritom (1 ili 2 ≤ 1.30)
+    const byExt2 = new Map(demoFixtures(FROM, TO).map((f) => [f.externalId, f]));
+    const sel = await selectionsOf(scan.id);
+    expect(sel.some((x) => { const o = byExt2.get(x.ext)!.odds; return (o.HOME?.price ?? 9) <= 1.3 || (o.AWAY?.price ?? 9) <= 1.3; })).toBe(true);
   });
 
   it("„Skeniraj oba“ daje iste rezultate kao dva odvojena skeniranja", async () => {

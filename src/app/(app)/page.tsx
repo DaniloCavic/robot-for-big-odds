@@ -50,7 +50,6 @@ export default async function DashboardPage() {
           <h2 className="mb-4 font-semibold">Pravila</h2>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between gap-4"><dt className="text-muted">Okidač (2+ ili 0–3)</dt><dd className="font-medium tabular-nums">do {formatOdds(settings.kontraTriggerMax)}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-muted">Preskoči favorita 1/2</dt><dd className="font-medium tabular-nums">do {formatOdds(settings.kontraFavoriteMax)}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Ulog po tipu</dt><dd className="font-medium tabular-nums">{formatRsd(settings.stakePerSelection)}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Tipovi</dt><dd className="font-medium">0–1 (umesto 2+), 4+ (umesto 0–3)</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Sport</dt><dd className="font-medium">Samo pravi fudbal</dd></div>

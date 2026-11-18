@@ -7,8 +7,9 @@ import type { KontraTypeCode } from "@/lib/odds";
  *   2+  (OVER_1_5)  ≤ prag → igra se 0–1 (UNDER_1_5)
  *   0–3 (UNDER_3_5) ≤ prag → igra se 4+  (OVER_3_5)
  *
+ * Kvote za 1 i 2 se NE gledaju (odluka korisnika, 18.11.2026).
+ *
  * Utakmica se preskače (sa razlogom) kada okidač postoji, ali:
- *   FAVORIT_1_2       – 1 ili 2 je ≤ prag favorita (podrazumevano 1.30)
  *   OBA_GOLA          – i 2+ i 0–3 su ≤ prag okidača
  *   NEMA_KONTRA_KVOTE – kladionica ne nudi kontra tip (ili je < 1.01 / neaktivan)
  *
@@ -16,22 +17,21 @@ import type { KontraTypeCode } from "@/lib/odds";
  * Kontra tip se igra po kvoti kladionice, bez gornje granice.
  */
 
-export type KontraSkipReason = "OBA_GOLA" | "FAVORIT_1_2" | "NEMA_KONTRA_KVOTE";
-export const KONTRA_SKIP_REASONS: KontraSkipReason[] = ["OBA_GOLA", "FAVORIT_1_2", "NEMA_KONTRA_KVOTE"];
+export type KontraSkipReason = "OBA_GOLA" | "NEMA_KONTRA_KVOTE";
+export const KONTRA_SKIP_REASONS: KontraSkipReason[] = ["OBA_GOLA", "NEMA_KONTRA_KVOTE"];
 export const KONTRA_SKIP_LABELS: Record<KontraSkipReason, string> = {
   OBA_GOLA: "Oba tipa golova (2+ i 0–3) ispod praga",
-  FAVORIT_1_2: "Favorit 1 ili 2 ispod praga",
   NEMA_KONTRA_KVOTE: "Kladionica ne nudi kontra tip",
 };
 
 /** Podrazumevani pragovi (Podešavanja ih mogu promeniti). 1.30 ulazi, 1.31 ne. */
 export const KONTRA_DEFAULT_TRIGGER_MAX = 1.3;
-export const KONTRA_DEFAULT_FAVORITE_MAX = 1.3;
 /** Najniža prihvatljiva kvota kontra tipa. */
 export const KONTRA_MIN_ODDS = 1.01;
 
 type Price = number | { price: number; active?: boolean } | null | undefined;
 
+/** 1 i 2 se ne gledaju; ako se proslede, ignorišu se. */
 export type KontraOddsInput = {
   HOME?: Price;
   AWAY?: Price;
@@ -41,7 +41,7 @@ export type KontraOddsInput = {
   OVER_3_5?: Price;
 };
 
-export type KontraOptions = { triggerMax?: number; favoriteMax?: number };
+export type KontraOptions = { triggerMax?: number };
 
 export type KontraTrigger = "OVER_1_5" | "UNDER_3_5";
 
@@ -72,7 +72,6 @@ const atOrBelow = (price: number | null, max: number) => price !== null && price
 
 export function applyKontraRules(input: KontraOddsInput, opts: KontraOptions = {}): KontraDecision {
   const triggerMax = opts.triggerMax ?? KONTRA_DEFAULT_TRIGGER_MAX;
-  const favoriteMax = opts.favoriteMax ?? KONTRA_DEFAULT_FAVORITE_MAX;
 
   const over15 = priceOf(input.OVER_1_5);
   const under35 = priceOf(input.UNDER_3_5);
@@ -86,8 +85,6 @@ export function applyKontraRules(input: KontraOddsInput, opts: KontraOptions = {
   const triggerOdds = overTrig ? over15 : under35;
   const skip = (skipReason: KontraSkipReason): KontraDecision => ({ ...none, skipReason, trigger, triggerOdds });
 
-  // Pravilo 4: favorit 1 ili 2 → preskoči, čak i kad okidač postoji
-  if (atOrBelow(priceOf(input.HOME), favoriteMax) || atOrBelow(priceOf(input.AWAY), favoriteMax)) return skip("FAVORIT_1_2");
   // Pravilo 3: oba tipa golova ispod praga → preskoči
   if (overTrig && underTrig) return { ...skip("OBA_GOLA"), trigger: null, triggerOdds: null };
 

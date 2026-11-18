@@ -25,12 +25,11 @@ export async function saveSettingsAction(_prev: SettingsState, formData: FormDat
     combineResultGoals: before.combineResultGoals,
     comboFallback: before.comboFallback,
     kontraTriggerMax: normalizeDecimal(formData.get("kontraTriggerMax")) || undefined,
-    kontraFavoriteMax: normalizeDecimal(formData.get("kontraFavoriteMax")) || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const next = parsed.data;
-  const keys = ["maxOdds", "stakePerSelection", "maxRequestsPerScan", "resultCheckMinutes", "apiFootballDailyCap", "oddsPapiResultChecksPerDay", "excludeGoalsPair", "combineResultGoals", "comboFallback", "kontraTriggerMax", "kontraFavoriteMax"] as const;
+  const keys = ["maxOdds", "stakePerSelection", "maxRequestsPerScan", "resultCheckMinutes", "apiFootballDailyCap", "oddsPapiResultChecksPerDay", "excludeGoalsPair", "combineResultGoals", "comboFallback", "kontraTriggerMax"] as const;
   if (keys.every((k) => before[k] === next[k])) return { ok: true };
 
   await prisma.$transaction([

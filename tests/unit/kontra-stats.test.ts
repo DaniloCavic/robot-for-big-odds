@@ -66,15 +66,14 @@ describe("Kontra statistika", () => {
 describe("podešavanja – Kontra pragovi", () => {
   const base = { maxOdds: "1.30", stakePerSelection: "1000", maxRequestsPerScan: "60", resultCheckMinutes: "15", apiFootballDailyCap: "200", oddsPapiResultChecksPerDay: "10", excludeGoalsPair: true, combineResultGoals: true, comboFallback: "WINNER_ONLY" };
   const parse = (extra: Record<string, unknown>) => settingsSchema.safeParse({ ...base, ...extra });
-  it("podrazumevano 1.30 / 1.30", () => {
+  it("podrazumevano 1.30", () => {
     const p = parse({});
-    expect(p.success && [p.data.kontraTriggerMax, p.data.kontraFavoriteMax]).toEqual([1.3, 1.3]);
+    expect(p.success && p.data.kontraTriggerMax).toBe(1.3);
   });
-  it("prihvata 1.25 i 1.40, odbija 1.00, 1.51 (okidač), 2.01 (favorit) i tri decimale", () => {
-    expect(parse({ kontraTriggerMax: "1.25", kontraFavoriteMax: "1.40" }).success).toBe(true);
+  it("prihvata 1.25, odbija 1.00, 1.51 i tri decimale", () => {
+    expect(parse({ kontraTriggerMax: "1.25" }).success).toBe(true);
     expect(parse({ kontraTriggerMax: "1.00" }).success).toBe(false);
     expect(parse({ kontraTriggerMax: "1.51" }).success).toBe(false);
-    expect(parse({ kontraFavoriteMax: "2.01" }).success).toBe(false);
     expect(parse({ kontraTriggerMax: "1.255" }).success).toBe(false);
   });
 });

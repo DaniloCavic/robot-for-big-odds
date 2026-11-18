@@ -5,7 +5,7 @@ import { log } from "@/lib/log";
 import { COMBO_PARTS, COMBO_TYPES, isCombo, isValidOdds, KONTRA_TYPES, MARKET_LABELS, MARKET_TYPES, type ComboTypeCode, type MarketTypeCode } from "@/lib/odds";
 import { isRealFootball } from "./football";
 import { applyMatchRules, type ComboFallback } from "./rules";
-import { applyKontraRules, KONTRA_DEFAULT_FAVORITE_MAX, KONTRA_DEFAULT_TRIGGER_MAX, KONTRA_SKIP_REASONS, type KontraSkipReason } from "./kontra-rules";
+import { applyKontraRules, KONTRA_DEFAULT_TRIGGER_MAX, KONTRA_SKIP_REASONS, type KontraSkipReason } from "./kontra-rules";
 import { getProvider } from "./providers";
 import { ProviderError, RequestLimitReached, type OddsProvider, type ProviderFixture, type ScanContext } from "./types";
 
@@ -31,7 +31,6 @@ type Scan = NonNullable<Awaited<ReturnType<typeof prisma.robotScan.findUnique>>>
 /** Dijagnostika Kontra skeniranja (čuva se u RobotScan.diagnostics.kontra). */
 export type KontraDiagnostics = {
   triggerMax: number;
-  favoriteMax: number;
   /** Utakmice gde je 2+ ili 0–3 ispod praga. */
   withTrigger: number;
   /** Odigrani kontra tipovi. */
@@ -138,11 +137,10 @@ function osnovniProcessor(scan: Scan, provider: OddsProvider, settings: Settings
 }
 
 /** Kontra robot – igra 0–1 umesto 2+ i 4+ umesto 0–3 (pravila u kontra-rules.ts). Spojeni tipovi i ručni unos se ne koriste. */
-function kontraProcessor(scan: Scan, provider: OddsProvider, settings: Settings): Processor {
+function kontraProcessor(scan: Scan, provider: OddsProvider): Processor {
   const scanId = scan.id;
   const kd: KontraDiagnostics = {
     triggerMax: scan.maxOddsUsed.toNumber() || KONTRA_DEFAULT_TRIGGER_MAX,
-    favoriteMax: settings?.kontraFavoriteMax.toNumber() ?? KONTRA_DEFAULT_FAVORITE_MAX,
     withTrigger: 0, played: 0,
     playedByType: Object.fromEntries(KONTRA_TYPES.map((t) => [t, 0])),
     skips: Object.fromEntries(KONTRA_SKIP_REASONS.map((r) => [r, 0])) as Record<KontraSkipReason, number>,
@@ -157,7 +155,7 @@ function kontraProcessor(scan: Scan, provider: OddsProvider, settings: Settings)
       for (const t of KONTRA_TYPES) if (fx.odds[t]) kd.counterOffered[t] += 1;
       const d = applyKontraRules(
         { HOME: fx.odds.HOME, AWAY: fx.odds.AWAY, OVER_1_5: fx.odds.OVER_1_5, UNDER_3_5: fx.odds.UNDER_3_5, UNDER_1_5: fx.odds.UNDER_1_5, OVER_3_5: fx.odds.OVER_3_5 },
-        { triggerMax: kd.triggerMax, favoriteMax: kd.favoriteMax },
+        { triggerMax: kd.triggerMax },
       );
       let created = 0;
       if (d.pick || d.skipReason) {
@@ -218,7 +216,7 @@ export async function runScans(scanIds: string[]): Promise<void> {
     return;
   }
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
-  const processors = scans.map((s) => (s.strategy === "KONTRA" ? kontraProcessor(s, provider, settings) : osnovniProcessor(s, provider, settings)));
+  const processors = scans.map((s) => (s.strategy === "KONTRA" ? kontraProcessor(s, provider) : osnovniProcessor(s, provider, settings)));
 
   const diag: Record<string, unknown> = {};
   let lastStopCheck = 0;

@@ -15,13 +15,13 @@ describe("Kontra pravila – tabela primera iz specifikacije", () => {
   it("B: 0–3 1.25 → 4+", () => {
     expect(applyKontraRules(row(2.1, 3.3, 1.45, 1.25))).toEqual({ pick: "OVER_3_5", odds: 3.6, skipReason: null, trigger: "UNDER_3_5", triggerOdds: 1.25 });
   });
-  it("C: favorit 1 (1.25) → preskoči FAVORIT_1_2", () => {
-    expect(applyKontraRules(row(1.25, 9, 1.22, 1.6))).toMatchObject({ pick: null, odds: null, skipReason: "FAVORIT_1_2" });
+  it("C: 1 = 1.25 se ne gleda (pravilo od 18.11.) → 0–1", () => {
+    expect(applyKontraRules(row(1.25, 9, 1.22, 1.6))).toMatchObject({ pick: "UNDER_1_5", odds: 4.2, skipReason: null, triggerOdds: 1.22 });
   });
   it("D: 2+ 1.28 i 0–3 1.30 → preskoči OBA_GOLA", () => {
     expect(applyKontraRules(row(2.4, 2.9, 1.28, 1.3))).toMatchObject({ pick: null, odds: null, skipReason: "OBA_GOLA" });
   });
-  it("E: 1 = 1.31 nije favorit → 0–1", () => {
+  it("E: 1 = 1.31 → 0–1", () => {
     expect(applyKontraRules(row(1.31, 8.5, 1.2, 1.7))).toMatchObject({ pick: "UNDER_1_5", skipReason: null, triggerOdds: 1.2 });
   });
   it("F: 2+ = 1.30 ulazi → 0–1", () => {
@@ -42,10 +42,11 @@ describe("Kontra pravila – granice i posebni slučajevi", () => {
     expect(applyKontraRules(row(2, 3, 1.6, 1.31)).pick).toBeNull();
     expect(applyKontraRules(row(2, 3, 1.301, 1.6)).pick).toBeNull();
   });
-  it("favorit: 1.30 preskače, 1.31 ne (i za 1 i za 2)", () => {
-    expect(applyKontraRules(row(1.3, 9, 1.2, 1.6)).skipReason).toBe("FAVORIT_1_2");
-    expect(applyKontraRules(row(9, 1.3, 1.2, 1.6)).skipReason).toBe("FAVORIT_1_2");
-    expect(applyKontraRules(row(9, 1.31, 1.2, 1.6)).pick).toBe("UNDER_1_5");
+  it("kvote za 1 i 2 se ne gledaju – ni 1.01, ni 1.30", () => {
+    expect(applyKontraRules(row(1.3, 9, 1.2, 1.6)).pick).toBe("UNDER_1_5");
+    expect(applyKontraRules(row(9, 1.3, 1.2, 1.6)).pick).toBe("UNDER_1_5");
+    expect(applyKontraRules(row(1.01, 25, 1.6, 1.25)).pick).toBe("OVER_3_5");
+    expect(applyKontraRules(row(1.05, 30, 1.1, 1.2))).toMatchObject({ pick: null, skipReason: "OBA_GOLA" }); // oba gola i dalje preskače
   });
   it("bez okidača nema ni preskoka (utakmica ne pripada Kontra robotu)", () => {
     expect(applyKontraRules(row(1.2, 12, 1.5, 1.5))).toEqual({ pick: null, odds: null, skipReason: null, trigger: null, triggerOdds: null });
@@ -62,12 +63,11 @@ describe("Kontra pravila – granice i posebni slučajevi", () => {
   it("neaktivan okidač se ne računa", () => {
     expect(applyKontraRules(row(2, 3, 1.6, 1.6, { OVER_1_5: { price: 1.2, active: false } })).pick).toBeNull();
   });
-  it("nedostaje 1 ili 2 – ne smeta (nije favorit)", () => {
+  it("nedostaje 1 ili 2 – ne smeta", () => {
     expect(applyKontraRules({ OVER_1_5: 1.2, UNDER_1_5: 4 }).pick).toBe("UNDER_1_5");
   });
   it("prilagođeni pragovi iz Podešavanja", () => {
     expect(applyKontraRules(row(2, 3, 1.25, 1.6), { triggerMax: 1.2 }).pick).toBeNull();
-    expect(applyKontraRules(row(1.25, 9, 1.2, 1.6), { favoriteMax: 1.2 }).pick).toBe("UNDER_1_5");
   });
 });
 

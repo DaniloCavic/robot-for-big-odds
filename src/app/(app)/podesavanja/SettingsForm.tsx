@@ -5,7 +5,7 @@ import { saveSettingsAction, type SettingsState } from "./actions";
 
 const input = "w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 tabular-nums outline-none focus:border-accent focus:ring-2 focus:ring-accent/30";
 
-export function SettingsForm({ stake, maxRequests, checkMinutes, opChecks, afCap, kontraTrigger = 1.3, kontraFavorite = 1.3 }: { stake: number; maxRequests: number; checkMinutes: number; opChecks: number; afCap: number; kontraTrigger?: number; kontraFavorite?: number }) {
+export function SettingsForm({ stake, maxRequests, checkMinutes, opChecks, afCap, kontraTrigger = 1.3 }: { stake: number; maxRequests: number; checkMinutes: number; opChecks: number; afCap: number; kontraTrigger?: number }) {
   const [state, action, pending] = useActionState<SettingsState, FormData>(saveSettingsAction, {});
   return (
     <form action={action} className="space-y-5">
@@ -44,13 +44,9 @@ export function SettingsForm({ stake, maxRequests, checkMinutes, opChecks, afCap
             <input id="kontraTriggerMax" name="kontraTriggerMax" inputMode="decimal" defaultValue={kontraTrigger.toFixed(2)} className={input} />
             <p className="mt-1.5 text-xs text-muted">Kad je 2+ (ili 0–3) do ove kvote, igra se 0–1 (ili 4+). Podrazumevano 1.30 – 1.30 ulazi, 1.31 ne.</p>
           </div>
-          <div>
-            <label htmlFor="kontraFavoriteMax" className="mb-1.5 block text-sm text-muted">Prag favorita 1/2</label>
-            <input id="kontraFavoriteMax" name="kontraFavoriteMax" inputMode="decimal" defaultValue={kontraFavorite.toFixed(2)} className={input} />
-            <p className="mt-1.5 text-xs text-muted">Ako je 1 ili 2 do ove kvote, utakmica se preskače. Podrazumevano 1.30.</p>
-          </div>
+          <p className="self-center text-xs text-muted">Kvote za 1 i 2 se ne gledaju. Ako su i 2+ i 0–3 do praga, utakmica se preskače.</p>
         </div>
-        <p className="mt-3 text-xs text-muted">Pragovi važe za nova skeniranja.</p>
+        <p className="mt-3 text-xs text-muted">Prag važi za nova skeniranja.</p>
       </fieldset>
       {state.error && <p role="alert" className="rounded-lg bg-lost/10 px-3 py-2 text-sm text-lost">{state.error}</p>}
       {state.ok && <p role="status" className="rounded-lg bg-won/10 px-3 py-2 text-sm text-won">Sačuvano.</p>}
