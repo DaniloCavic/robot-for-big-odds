@@ -14,8 +14,8 @@ const bodySchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   provider: z.string(),
-  /** Skener velikih kvota: uvek KONTRA (0–1 umesto 2+, 4+ umesto 0–3). */
-  strategy: z.literal("KONTRA").default("KONTRA"),
+  /** Value betting: uvek VALUE (AdmiralBet naspram Pinnacle-a bez marže). */
+  strategy: z.literal("VALUE").default("VALUE"),
 });
 
 export async function POST(req: Request) {
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     const out = [];
     for (const st of strategies) {
       out.push(await tx.robotScan.create({
-        data: { ...base, strategy: st, maxOddsUsed: settings.kontraTriggerMax },
+        data: { ...base, strategy: st, maxOddsUsed: settings.valueMaxOdds },
       }));
     }
     return out;

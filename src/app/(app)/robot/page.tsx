@@ -12,13 +12,13 @@ export default async function RobotPage() {
   const providers = availableProviders();
   return (
     <>
-      <PageHeader title="Robot" subtitle="Skener velikih kvota: samo pravi fudbal, tipovi 0–1 i 4+ po kvoti kladionice." />
+      <PageHeader title="Robot" subtitle="Value betting: AdmiralBet naspram Pinnacle-a – tipovi gde je kvota veća od poštene." />
       <RobotClient
         providers={providers}
         initialScans={scans}
         today={ymdToString(zonedYmd(new Date()))}
         maxRequests={settings.maxRequestsPerScan}
-        kontraTrigger={settings.kontraTriggerMax}
+        valueRules={{ minValuePct: settings.valueMinPct, minOdds: settings.valueMinOdds, maxOdds: settings.valueMaxOdds }}
       />
     </>
   );

@@ -7,7 +7,7 @@ import type { TrackerLogEntry, TrackerReport } from "./tracker";
 
 /** Tipovi koji su u bar jednom (neobrisanom) filteru. Ovaj sajt je skener velikih kvota – samo Kontra filteri. */
 const inActiveFilter: Prisma.TrackedSelectionWhereInput = {
-  filterEntries: { some: { removedAt: null, filterSet: { status: { not: "DELETED" }, strategy: "KONTRA" } } },
+  filterEntries: { some: { removedAt: null, filterSet: { status: { not: "DELETED" }, strategy: "VALUE" } } },
 };
 
 export const TABS = {

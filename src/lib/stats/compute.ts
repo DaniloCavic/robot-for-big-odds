@@ -21,6 +21,9 @@ export type StatRow = {
   strategy?: string;
   /** Kontra: kvota okidača (2+ za 0–1, 0–3 za 4+) */
   triggerOdds?: number | null;
+  /** Value: poštena kvota (Pinnacle bez marže) i vrednost u % u trenutku skeniranja */
+  fairOdds?: number | null;
+  valuePct?: number | null;
 };
 
 export type Metrics = {
@@ -73,13 +76,13 @@ export function metrics(rows: StatRow[]): Metrics {
   };
 }
 
-export const TYPE_ORDER = ["HOME", "AWAY", "OVER_1_5", "UNDER_3_5", "HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5", "UNDER_1_5", "OVER_3_5", "DRAW"] as const;
+export const TYPE_ORDER = ["HOME", "AWAY", "OVER_1_5", "UNDER_3_5", "HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5", "UNDER_1_5", "OVER_3_5", "DRAW", "OVER_2_5", "UNDER_2_5", "DC_1X", "DC_X2", "DC_12"] as const;
 export const TYPE_LABEL: Record<string, string> = {
   HOME: "1", AWAY: "2", OVER_1_5: "2+", UNDER_3_5: "0–3", DRAW: "X",
   HOME_OVER_1_5: "1&2+", HOME_UNDER_3_5: "1&0–3", AWAY_OVER_1_5: "2&2+", AWAY_UNDER_3_5: "2&0–3",
-  UNDER_1_5: "0–1", OVER_3_5: "4+",
+  UNDER_1_5: "0–1", OVER_3_5: "4+", OVER_2_5: "3+", UNDER_2_5: "0–2", DC_1X: "1X", DC_X2: "X2", DC_12: "12",
 };
-const OPTIONAL_TYPES = new Set(["DRAW", "HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5", "UNDER_1_5", "OVER_3_5"]);
+const OPTIONAL_TYPES = new Set(["DRAW", "HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5", "UNDER_1_5", "OVER_3_5", "OVER_2_5", "UNDER_2_5", "DC_1X", "DC_X2", "DC_12"]);
 const KONTRA_ONLY = new Set(["UNDER_1_5", "OVER_3_5"]);
 export const GROUPS = [
   { key: "result", label: "Konačan ishod (1, 2)", types: ["HOME", "AWAY", "DRAW"] },
@@ -273,3 +276,57 @@ export function computeKontraStats(all: StatRow[]) {
   return { total: rows.length, overall: metrics(rows), byType, byTrigger, byOdds };
 }
 export type KontraStats = ReturnType<typeof computeKontraStats>;
+
+// ---------------------------------------------------------------- Value robot
+
+export const VALUE_ORDER = ["HOME", "DRAW", "AWAY", "DC_1X", "DC_X2", "DC_12", "OVER_1_5", "UNDER_1_5", "OVER_2_5", "UNDER_2_5", "OVER_3_5", "UNDER_3_5"] as const;
+export const VALUE_BUCKETS = [
+  { key: "lt4", label: "do 4%", from: -Infinity, to: 4 },
+  { key: "4-6", label: "4–6%", from: 4, to: 6 },
+  { key: "6-8", label: "6–8%", from: 6, to: 8 },
+  { key: "8-12", label: "8–12%", from: 8, to: 12 },
+  { key: "12+", label: "12%+", from: 12, to: Infinity },
+];
+export const VALUE_ODDS_BUCKETS = [
+  { key: "lt2", label: "do 1.99", from: 1, to: 2 },
+  { key: "2-3", label: "2.00–2.99", from: 2, to: 3 },
+  { key: "3-4", label: "3.00–3.99", from: 3, to: 4 },
+  { key: "4+", label: "4.00+", from: 4, to: Infinity },
+];
+
+export type ValueMetrics = Metrics & {
+  /** Prosečna vrednost u % (obračunati tipovi). */
+  avgValuePct: number | null;
+  /** Očekivani neto po Pinnacle-u: Σ ulog × vrednost (obračunati WON/LOST). */
+  expectedNet: number;
+  /** Očekivan broj prolaza: Σ 1 / poštena kvota (obračunati WON/LOST). */
+  expectedWins: number;
+};
+
+export function valueMetrics(rows: StatRow[]): ValueMetrics {
+  const m = metrics(rows);
+  const decided = rows.filter((r) => (r.status === "WON" || r.status === "LOST") && r.valuePct != null && r.fairOdds);
+  return {
+    ...m,
+    avgValuePct: decided.length ? decided.reduce((a, r) => a + r.valuePct!, 0) / decided.length : null,
+    expectedNet: Math.round(decided.reduce((a, r) => a + r.stake * (r.odds / r.fairOdds! - 1), 0) * 100) / 100,
+    expectedWins: Math.round(decided.reduce((a, r) => a + 1 / r.fairOdds!, 0) * 10) / 10,
+  };
+}
+
+/** Statistika value robota: ukupno, po tipu, po grupi, po vrednosti, po kvoti. */
+export function computeValueStats(rows: StatRow[]) {
+  const inRange = (x: number | null | undefined, b: { from: number; to: number }) => x != null && x >= b.from - 1e-9 && x < b.to - 1e-9;
+  return {
+    total: rows.length,
+    overall: valueMetrics(rows),
+    byType: VALUE_ORDER.map((t) => ({ key: t, label: TYPE_LABEL[t], ...valueMetrics(rows.filter((r) => r.marketType === t)) })).filter((x) => x.total > 0),
+    byGroup: [
+      { key: "result", label: "Ishod (1, X, 2, 1X, X2, 12)", ...valueMetrics(rows.filter((r) => ["HOME", "DRAW", "AWAY", "DC_1X", "DC_X2", "DC_12"].includes(r.marketType))) },
+      { key: "goals", label: "Golovi (2+, 0–1, 3+, 0–2, 4+, 0–3)", ...valueMetrics(rows.filter((r) => ["OVER_1_5", "UNDER_1_5", "OVER_2_5", "UNDER_2_5", "OVER_3_5", "UNDER_3_5"].includes(r.marketType))) },
+    ],
+    byValue: VALUE_BUCKETS.map((b) => ({ key: b.key, label: b.label, ...valueMetrics(rows.filter((r) => inRange(r.valuePct, b))) })),
+    byOdds: VALUE_ODDS_BUCKETS.map((b) => ({ key: b.key, label: b.label, ...valueMetrics(rows.filter((r) => inRange(Math.round(r.odds * 100) / 100, b))) })),
+  };
+}
+export type ValueStats = ReturnType<typeof computeValueStats>;

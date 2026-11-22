@@ -10,12 +10,12 @@ export default async function SettingsPage() {
   const [settings, user] = await Promise.all([getSettings(), requireUser()]);
   return (
     <>
-      <PageHeader title="Podešavanja" subtitle="Pragovi skenera, ulog, izvori podataka i nalog." />
+      <PageHeader title="Podešavanja" subtitle="Pravila value robota, ulog, izvori podataka i nalog." />
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
         <Card>
           <h2 className="mb-4 font-semibold">Pravila skeniranja i simulacije</h2>
-          <SettingsForm stake={settings.stakePerSelection} maxRequests={settings.maxRequestsPerScan} checkMinutes={settings.resultCheckMinutes} opChecks={settings.oddsPapiResultChecksPerDay} afCap={settings.apiFootballDailyCap} kontraTrigger={settings.kontraTriggerMax} />
+          <SettingsForm stake={settings.stakePerSelection} maxRequests={settings.maxRequestsPerScan} checkMinutes={settings.resultCheckMinutes} opChecks={settings.oddsPapiResultChecksPerDay} afCap={settings.apiFootballDailyCap} value={{ minPct: settings.valueMinPct, minOdds: settings.valueMinOdds, maxOdds: settings.valueMaxOdds }} />
         </Card>
         <Card>
           <h2 className="mb-4 font-semibold">Promena lozinke</h2>

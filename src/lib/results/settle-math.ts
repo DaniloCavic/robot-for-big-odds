@@ -21,6 +21,12 @@ export function outcomeFor(type: MarketTypeCode, home: number, away: number): "W
     // kontra tipovi
     case "UNDER_1_5": return total <= 1 ? "WON" : "LOST";
     case "OVER_3_5": return total >= 4 ? "WON" : "LOST";
+    // value robot
+    case "OVER_2_5": return total >= 3 ? "WON" : "LOST";
+    case "UNDER_2_5": return total <= 2 ? "WON" : "LOST";
+    case "DC_1X": return home >= away ? "WON" : "LOST";
+    case "DC_X2": return away >= home ? "WON" : "LOST";
+    case "DC_12": return home !== away ? "WON" : "LOST";
   }
 }
 

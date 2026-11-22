@@ -5,7 +5,7 @@ import { saveSettingsAction, type SettingsState } from "./actions";
 
 const input = "w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 tabular-nums outline-none focus:border-accent focus:ring-2 focus:ring-accent/30";
 
-export function SettingsForm({ stake, maxRequests, checkMinutes, opChecks, afCap, kontraTrigger = 1.3 }: { stake: number; maxRequests: number; checkMinutes: number; opChecks: number; afCap: number; kontraTrigger?: number }) {
+export function SettingsForm({ stake, maxRequests, checkMinutes, opChecks, afCap, value = { minPct: 4, minOdds: 1.5, maxOdds: 5 } }: { stake: number; maxRequests: number; checkMinutes: number; opChecks: number; afCap: number; value?: { minPct: number; minOdds: number; maxOdds: number } }) {
   const [state, action, pending] = useActionState<SettingsState, FormData>(saveSettingsAction, {});
   return (
     <form action={action} className="space-y-5">
@@ -26,9 +26,9 @@ export function SettingsForm({ stake, maxRequests, checkMinutes, opChecks, afCap
           <p className="mt-1.5 text-xs text-muted">Najmanji razmak između dva API-Football zahteva za isti dan (5–240). Besplatno: 100 zahteva/dan.</p>
         </div>
         <div>
-          <label htmlFor="apiFootballDailyCap" className="mb-1.5 block text-sm text-muted">API-Football zahteva dnevno (rezultati)</label>
+          <label htmlFor="apiFootballDailyCap" className="mb-1.5 block text-sm text-muted">API-Football zahteva dnevno (rezultati i Pinnacle kvote)</label>
           <input id="apiFootballDailyCap" name="apiFootballDailyCap" inputMode="numeric" defaultValue={afCap} className={input} />
-          <p className="mt-1.5 text-xs text-muted">Glavni izvor rezultata. Pro paket ima 7.500 dnevno; 1 zahtev pokriva sve utakmice jednog dana.</p>
+          <p className="mt-1.5 text-xs text-muted">Rezultati (1 zahtev po danu) i Pinnacle kvote (oko 10–15 zahteva po danu u skeniranju). Pro paket ima 7.500 dnevno.</p>
         </div>
         <div>
           <label htmlFor="oddsPapiResultChecksPerDay" className="mb-1.5 block text-sm text-muted">OddsPapi provere rezultata dnevno</label>
@@ -36,17 +36,23 @@ export function SettingsForm({ stake, maxRequests, checkMinutes, opChecks, afCap
           <p className="mt-1.5 text-xs text-muted">Rezervni izvor – 1 zahtev po utakmici, troši mesečnu OddsPapi kvotu.</p>
         </div>
       </div>
-      <fieldset className="rounded-xl border border-line p-4" data-testid="kontra-settings">
-        <legend className="px-1 text-sm font-semibold">Pravila skenera velikih kvota</legend>
-        <div className="grid gap-5 sm:grid-cols-2">
+      <fieldset className="rounded-xl border border-line p-4" data-testid="value-settings">
+        <legend className="px-1 text-sm font-semibold">Pravila value robota</legend>
+        <div className="grid gap-5 sm:grid-cols-3">
           <div>
-            <label htmlFor="kontraTriggerMax" className="mb-1.5 block text-sm text-muted">Prag okidača (2+ ili 0–3)</label>
-            <input id="kontraTriggerMax" name="kontraTriggerMax" inputMode="decimal" defaultValue={kontraTrigger.toFixed(2)} className={input} />
-            <p className="mt-1.5 text-xs text-muted">Kad je 2+ (ili 0–3) do ove kvote, igra se 0–1 (ili 4+). Podrazumevano 1.30 – 1.30 ulazi, 1.31 ne.</p>
+            <label htmlFor="valueMinPct" className="mb-1.5 block text-sm text-muted">Najmanja vrednost (%)</label>
+            <input id="valueMinPct" name="valueMinPct" inputMode="decimal" defaultValue={value.minPct.toFixed(1)} className={input} />
           </div>
-          <p className="self-center text-xs text-muted">Kvote za 1 i 2 se ne gledaju. Ako su i 2+ i 0–3 do praga, utakmica se preskače.</p>
+          <div>
+            <label htmlFor="valueMinOdds" className="mb-1.5 block text-sm text-muted">Najmanja kvota</label>
+            <input id="valueMinOdds" name="valueMinOdds" inputMode="decimal" defaultValue={value.minOdds.toFixed(2)} className={input} />
+          </div>
+          <div>
+            <label htmlFor="valueMaxOdds" className="mb-1.5 block text-sm text-muted">Najveća kvota</label>
+            <input id="valueMaxOdds" name="valueMaxOdds" inputMode="decimal" defaultValue={value.maxOdds.toFixed(2)} className={input} />
+          </div>
         </div>
-        <p className="mt-3 text-xs text-muted">Prag važi za nova skeniranja.</p>
+        <p className="mt-3 text-xs text-muted">Tip ulazi kad je AdmiralBet kvota bar ovoliko % veća od poštene (Pinnacle bez marže) i u opsegu kvota. Predlog: 4%, 1.50–5.00. Važi za nova skeniranja.</p>
       </fieldset>
       {state.error && <p role="alert" className="rounded-lg bg-lost/10 px-3 py-2 text-sm text-lost">{state.error}</p>}
       {state.ok && <p role="status" className="rounded-lg bg-won/10 px-3 py-2 text-sm text-won">Sačuvano.</p>}

@@ -9,8 +9,12 @@ export type ComboTypeCode = (typeof COMBO_TYPES)[number];
 export const KONTRA_TYPES = ["UNDER_1_5", "OVER_3_5"] as const;
 export type KontraTypeCode = (typeof KONTRA_TYPES)[number];
 export const isKontra = (t: string): t is KontraTypeCode => (KONTRA_TYPES as readonly string[]).includes(t);
-/** Svi tipovi koji mogu postojati u bazi (DRAW ostaje samo zbog starih zapisa). */
-export type MarketTypeCode = (typeof MARKET_TYPES)[number] | ComboTypeCode | KontraTypeCode | "DRAW";
+/** Value robot: tipovi koji se porede sa Pinnacle-om (redosled = redosled prikaza). */
+export const VALUE_TYPES = ["HOME", "DRAW", "AWAY", "DC_1X", "DC_X2", "DC_12", "OVER_1_5", "UNDER_1_5", "OVER_2_5", "UNDER_2_5", "OVER_3_5", "UNDER_3_5"] as const;
+export type ValueTypeCode = (typeof VALUE_TYPES)[number];
+export const isValueType = (t: string): t is ValueTypeCode => (VALUE_TYPES as readonly string[]).includes(t);
+/** Svi tipovi koji mogu postojati u bazi. */
+export type MarketTypeCode = (typeof MARKET_TYPES)[number] | ComboTypeCode | KontraTypeCode | ValueTypeCode | "DRAW";
 
 /** Od kojih delova se sastoji spojeni tip. */
 export const COMBO_PARTS: Record<ComboTypeCode, ["HOME" | "AWAY", "OVER_1_5" | "UNDER_3_5"]> = {
@@ -33,6 +37,11 @@ export const MARKET_LABELS: Record<MarketTypeCode, string> = {
   AWAY_UNDER_3_5: "2&0–3",
   UNDER_1_5: "0–1",
   OVER_3_5: "4+",
+  OVER_2_5: "3+",
+  UNDER_2_5: "0–2",
+  DC_1X: "1X",
+  DC_X2: "X2",
+  DC_12: "12",
 };
 
 export const MARKET_DESCRIPTIONS: Record<MarketTypeCode, string> = {
@@ -47,6 +56,11 @@ export const MARKET_DESCRIPTIONS: Record<MarketTypeCode, string> = {
   AWAY_UNDER_3_5: "Pobeda gosta i 0–3 gola",
   UNDER_1_5: "Ukupno golova 0 ili 1",
   OVER_3_5: "Ukupno golova 4 ili više",
+  OVER_2_5: "Ukupno golova 3 ili više",
+  UNDER_2_5: "Ukupno golova 0 do 2",
+  DC_1X: "Domaćin ne gubi",
+  DC_X2: "Gost ne gubi",
+  DC_12: "Nema nerešenog",
 };
 
 const EPS = 1e-9;

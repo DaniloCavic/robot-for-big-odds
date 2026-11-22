@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, EmptyState } from "@/components/ui";
 import { IconRobot } from "@/components/icons";
 import type { ScanStatusDto, SelectionDto } from "@/lib/robot/scans";
-import type { KontraSkipReason } from "@/lib/robot/kontra-rules";
 
 type Provider = { id: string; name: string; isDemo: boolean; available: boolean; reason?: string; bookmakerSlug?: string };
 type SourceStatus = { similar?: string[]; configured: boolean; ok?: boolean; error?: string; requestLimit?: number | null; requestCount?: number | null; hasSoccerbet?: boolean | null; hasFootball?: boolean | null; bookmakers?: string[] | null };
@@ -18,12 +17,8 @@ const PERIODS = [
 ] as const;
 type PeriodKey = (typeof PERIODS)[number][0];
 
-const KONTRA_TYPES = ["0–1", "4+"] as const;
+const VALUE_LABELS = ["1", "X", "2", "1X", "X2", "12", "2+", "0–1", "3+", "0–2", "4+", "0–3"] as const;
 
-const SKIP_LABELS: Record<string, string> = {
-  OBA_GOLA: "Preskočeno – oba gola",
-  NEMA_KONTRA_KVOTE: "Preskočeno – nema kontra kvote",
-};
 const STATUS_LABEL: Record<ScanStatusDto["status"], [string, string]> = {
   RUNNING: ["Radi", "bg-live/15 text-live"],
   COMPLETED: ["Završeno", "bg-won/15 text-won"],
@@ -39,8 +34,9 @@ function DemoBadge() {
   return <span className="rounded-md bg-live/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-live">DEMO</span>;
 }
 
-export function RobotClient({ providers: serverProviders, initialScans, today, maxRequests, kontraTrigger = 1.3 }: {
-  providers: Provider[]; initialScans: ScanStatusDto[]; today: string; maxRequests: number; kontraTrigger?: number;
+export function RobotClient({ providers: serverProviders, initialScans, today, maxRequests, valueRules = { minValuePct: 4, minOdds: 1.5, maxOdds: 5 } }: {
+  providers: Provider[]; initialScans: ScanStatusDto[]; today: string; maxRequests: number;
+  valueRules?: { minValuePct: number; minOdds: number; maxOdds: number };
 }) {
   const [source, setSource] = useState<SourceStatus | null>(null);
   const [touched, setTouched] = useState(false);
@@ -214,8 +210,9 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
         {error && <p role="alert" className="mt-5 rounded-lg bg-lost/10 px-3 py-2 text-sm text-lost">{error}</p>}
 
         <p className="mt-6 rounded-xl border border-line bg-panel-2/50 px-4 py-3 text-sm text-muted" data-testid="rules-info">
-          Okidač: <b className="text-text">2+</b> ili <b className="text-text">0–3</b> do <b className="text-text">{kontraTrigger.toFixed(2)}</b> → igra se <b className="text-accent">0–1</b> ili <b className="text-accent">4+</b> po kvoti kladionice.
-          Kvote za 1 i 2 se ne gledaju. Preskače se ako su oba (2+ i 0–3) do praga ili ako nema kvote za 0–1 / 4+. Prag: Podešavanja.
+          AdmiralBet kvote se porede sa <b className="text-text">Pinnacle</b> kvotama bez marže („poštena“ kvota, API-Football).
+          Tip ulazi ako je AdmiralBet kvota bar <b className="text-accent">{valueRules.minValuePct}%</b> veća od poštene i između {valueRules.minOdds.toFixed(2)} i {valueRules.maxOdds.toFixed(2)}.
+          Tipovi: 1, X, 2, 1X, X2, 12 i golovi 2+/0–1, 3+/0–2, 4+/0–3 – najviše jedan tip ishoda i jedan tip golova po utakmici. Pravila: Podešavanja.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {!running ? (
@@ -251,14 +248,12 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
             <Stat label="Kraj" value={current.finishedAt ? fmtTime.format(new Date(current.finishedAt)) : "—"} />
             <Stat label="Pregledano utakmica" value={`${current.fixturesScanned}${current.fixturesTotal != null ? ` / ${current.fixturesTotal}` : ""}`} testId="scanned" />
             <Stat label="Izbačeno (virtuelno i sl.)" value={String(current.fixturesExcluded)} />
-            <Stat label="Sa okidačem (2+ ili 0–3)" value={String(current.diagnostics?.kontra?.withTrigger ?? 0)} testId="kontra-trigger" />
-            <Stat label="Odigrano (0–1 / 4+)" value={String(current.selectionsFound)} testId="found" />
-            {Object.entries(SKIP_LABELS).map(([k, label]) => (
-              <Stat key={k} label={label} value={String(current.diagnostics?.kontra?.skips?.[k as KontraSkipReason] ?? 0)} testId={`kontra-skip-${k}`} />
-            ))}
-            <Stat label="API zahteva" value={current.isDemo ? "0 (DEMO)" : String(current.requestsUsed)} />
+            <Stat label="Pinnacle utakmica (API-Football)" value={current.isDemo ? "DEMO" : String(current.diagnostics?.value?.refFixtures ?? 0)} testId="ref-fixtures" />
+            <Stat label="Spojeno sa Pinnacle-om" value={String(current.diagnostics?.value?.matched ?? 0)} testId="matched" />
+            <Stat label="Value tipova" value={String(current.selectionsFound)} testId="found" />
+            <Stat label="API zahteva (OddsPapi / API-Football)" value={current.isDemo ? "0 (DEMO)" : `${current.requestsUsed} / ${current.diagnostics?.value?.afRequests ?? 0}`} />
           </dl>
-          <KontraDiagnosticsBox scan={current} />
+          <ValueDiagnosticsBox scan={current} />
           {current.errors.length > 0 && (
             <ul className="mt-4 space-y-1 rounded-lg bg-lost/10 px-3 py-2 text-sm text-lost">
               {current.errors.map((e, i) => <li key={i}>{e}</li>)}
@@ -274,7 +269,7 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pretraga tima ili lige"
               className="w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent sm:w-56" />
             <div className="flex gap-1">
-              {KONTRA_TYPES.map((t) => (
+              {VALUE_LABELS.map((t) => (
                 <button key={t} type="button" aria-pressed={types.includes(t)}
                   onClick={() => setTypes((x) => (x.includes(t) ? x.filter((y) => y !== t) : [...x, t]))}
                   className={`min-w-10 rounded-lg border px-2.5 py-1.5 text-sm ${types.includes(t) ? "border-accent/60 bg-accent/10 text-accent" : "border-line text-muted"}`}>{t}</button>
@@ -286,10 +281,10 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
               <option value="odds">Po kvoti</option>
             </select>
           </div>
-          <p className="mb-4 text-xs text-muted">Tipovi 0–1 i 4+ po kvoti kladionice (bez gornje granice). Uz svaki tip je kvota okidača (2+ ili 0–3). U filter se dodaju na stranici Filter.</p>
+          <p className="mb-4 text-xs text-muted">AdmiralBet kvota, „fer“ = poštena kvota (Pinnacle bez marže) i vrednost u %. U filter se dodaju na stranici Filter.</p>
 
           {filtered.length === 0 ? (
-            <EmptyState title={running ? "Robot traži…" : "Nema selekcija"} text={running ? "Selekcije se pojavljuju dok robot radi." : "Za ovaj period nema utakmica gde je 2+ ili 0–3 do praga."} />
+            <EmptyState title={running ? "Robot traži…" : "Nema selekcija"} text={running ? "Selekcije se pojavljuju dok robot radi." : "Za ovaj period nema tipova sa dovoljnom vrednošću."} />
           ) : grouped ? (
             <ul className="grid gap-3 md:grid-cols-2" data-testid="selections">
               {grouped.map((rows) => {
@@ -307,7 +302,7 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
                           className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-2.5 py-1 text-sm">
                           <span className="font-semibold">{r.label}</span>
                           <span className="tabular-nums text-accent">{r.odds.toFixed(2)}</span>
-                          {r.triggerOdds != null && <span className="text-xs text-muted" data-testid="trigger-odds">okidač {r.label === "0–1" ? "2+" : "0–3"} {r.triggerOdds.toFixed(2)}</span>}
+                          {r.valuePct != null && <span className="text-xs text-muted" data-testid="value-info">fer {r.fairOdds?.toFixed(2)} · <b className="text-won">+{r.valuePct.toFixed(1)}%</b></span>}
                         </span>
                       ))}
                     </div>
@@ -326,7 +321,7 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
                       <td className="px-3 py-2 whitespace-nowrap">{fmt.format(new Date(r.kickoffTime))}</td>
                       <td className="px-3 py-2">{r.competition}</td>
                       <td className="px-3 py-2">{r.homeTeam} – {r.awayTeam}</td>
-                      <td className="px-3 py-2 font-semibold">{r.label}{r.triggerOdds != null && <span className="ml-2 text-xs font-normal text-muted">okidač {r.triggerOdds.toFixed(2)}</span>}</td>
+                      <td className="px-3 py-2 font-semibold">{r.label}{r.valuePct != null && <span className="ml-2 text-xs font-normal text-muted">fer {r.fairOdds?.toFixed(2)} · +{r.valuePct.toFixed(1)}%</span>}</td>
                       <td className="px-3 py-2 tabular-nums text-accent" data-odds={r.odds} data-combo={r.label.includes("&") ? "1" : undefined}>{r.odds.toFixed(2)}</td>
                       <td className="px-3 py-2 text-xs text-muted"><span className="flex items-center gap-1.5">{r.source} {r.isDemo && <DemoBadge />}</span></td>
                     </tr>
@@ -396,36 +391,39 @@ function SourceBox({ source, maxRequests }: { source: SourceStatus | null; maxRe
   );
 }
 
-const COMPARE_COLS = ["HOME", "AWAY", "OVER_1_5", "UNDER_3_5", "UNDER_1_5", "OVER_3_5"];
-const TYPE_LABEL: Record<string, string> = { HOME: "1", DRAW: "X", AWAY: "2", OVER_1_5: "2+", UNDER_3_5: "0–3", UNDER_1_5: "0–1", OVER_3_5: "4+" };
+const COMPARE_COLS = ["HOME", "DRAW", "AWAY", "DC_1X", "DC_X2", "DC_12", "OVER_1_5", "UNDER_1_5", "OVER_2_5", "UNDER_2_5", "OVER_3_5", "UNDER_3_5"];
+const TYPE_LABEL: Record<string, string> = { HOME: "1", DRAW: "X", AWAY: "2", DC_1X: "1X", DC_X2: "X2", DC_12: "12", OVER_1_5: "2+", UNDER_1_5: "0–1", OVER_2_5: "3+", UNDER_2_5: "0–2", OVER_3_5: "4+", UNDER_3_5: "0–3" };
 
-function KontraDiagnosticsBox({ scan }: { scan: ScanStatusDto }) {
-  const k = scan.diagnostics?.kontra;
-  if (!k || scan.status === "RUNNING") return null;
-  const log = scan.diagnostics?.kontraLog ?? [];
-  const noTrigger = Math.max(0, scan.fixturesScanned - scan.fixturesExcluded - k.withTrigger);
+function ValueDiagnosticsBox({ scan }: { scan: ScanStatusDto }) {
+  const v = scan.diagnostics?.value;
+  if (!v || scan.status === "RUNNING") return null;
+  const log = scan.diagnostics?.valueLog ?? [];
+  const unmatched = scan.diagnostics?.unmatchedLog ?? [];
+  const label = (t: string) => TYPE_LABEL[t] ?? t;
   return (
-    <details className="mt-4 rounded-lg border border-line px-3 py-2 text-sm" data-testid="kontra-diagnostics">
+    <details className="mt-4 rounded-lg border border-line px-3 py-2 text-sm" data-testid="value-diagnostics">
       <summary className="cursor-pointer text-muted">Dijagnostika skeniranja</summary>
       <ul className="mt-3 space-y-0.5 text-sm">
-        <li>Pregledano utakmica: <b>{scan.fixturesScanned}</b> (izbačeno virtuelno i sl.: {scan.fixturesExcluded})</li>
-        <li>Bez okidača (ni 2+ ni 0–3 ispod {k.triggerMax.toFixed(2)}): <b>{noTrigger}</b></li>
-        <li>Sa okidačem: <b>{k.withTrigger}</b>
-          <ul className="ml-5 list-disc text-muted">
-            <li>Odigrano: <b className="text-text">{k.played}</b> (0–1: {k.playedByType.UNDER_1_5 ?? 0}, 4+: {k.playedByType.OVER_3_5 ?? 0})</li>
-            {Object.entries(SKIP_LABELS).map(([r, label]) => <li key={r}>{label}: <b className="text-text">{k.skips[r as KontraSkipReason] ?? 0}</b></li>)}
-          </ul>
-        </li>
-        <li className="text-xs text-muted">Kladionica nudi 0–1 na {k.counterOffered.UNDER_1_5 ?? 0} utakmica, 4+ na {k.counterOffered.OVER_3_5 ?? 0}. Prag okidača {k.triggerMax.toFixed(2)}.</li>
+        <li>Referenca: <b>{v.reference}</b>{v.reference !== "DEMO" && <> · Pinnacle utakmica u periodu: <b>{v.refFixtures}</b> · API-Football zahteva: <b>{v.afRequests}</b></>}</li>
+        <li>AdmiralBet utakmica (pravi fudbal): <b>{v.matched + v.unmatched}</b> · spojeno sa Pinnacle-om: <b>{v.matched}</b> · nije nađeno: <b>{v.unmatched}</b></li>
+        <li>Provereno tipova: <b>{v.checked}</b> · value tipova: <b className="text-won">{v.tips}</b>{Object.keys(v.tipsByType).length > 0 && <> ({Object.entries(v.tipsByType).map(([t, n]) => `${label(t)}: ${n}`).join(", ")})</>}</li>
+        <li>Najveća vrednost po utakmici: {Object.entries(v.bestValue).map(([k, n]) => `${k}: ${n}`).join(" · ")}</li>
+        <li className="text-xs text-muted">Pravila: vrednost ≥ {v.opts.minValuePct}%, kvota {v.opts.minOdds.toFixed(2)}–{v.opts.maxOdds.toFixed(2)}. AdmiralBet nudi: {Object.entries(v.admiralOffered).map(([t, n]) => `${label(t)} ${n}`).join(", ")}</li>
       </ul>
-      {scan.diagnostics?.marketMap && <p className="mt-3 break-all text-xs text-muted">Mapiranje tržišta: {JSON.stringify(scan.diagnostics.marketMap)}</p>}
+      {scan.diagnostics?.marketMap && <p className="mt-3 break-all text-xs text-muted">Mapiranje tržišta (OddsPapi): {JSON.stringify(scan.diagnostics.marketMap)}</p>}
       {log.length > 0 && (
-        <div className="mt-3 text-xs text-muted" data-testid="kontra-log">
-          <p className="mb-1">Utakmice sa okidačem ({log.length}):</p>
+        <div className="mt-3 text-xs text-muted" data-testid="value-log">
+          <p className="mb-1">Spojene utakmice ({log.length}):</p>
           <ul className="space-y-0.5">
-            {log.map((r, i) => <li key={i}><span className="text-text">{r.match}</span>: {r.odds} → <b className="text-text">{r.decision}</b></li>)}
+            {log.map((r, i) => <li key={i}><span className="text-text">{r.match}</span>: {r.tips ? <b className="text-won">{r.tips}</b> : <>najbliže: {r.best}</>}</li>)}
           </ul>
         </div>
+      )}
+      {unmatched.length > 0 && (
+        <details className="mt-3 text-xs text-muted">
+          <summary className="cursor-pointer">Nije nađeno kod Pinnacle-a ({v.unmatched})</summary>
+          <p className="mt-1">{unmatched.join(" · ")}</p>
+        </details>
       )}
     </details>
   );

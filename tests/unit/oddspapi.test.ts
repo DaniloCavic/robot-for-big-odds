@@ -47,6 +47,7 @@ describe("OddsPapi – mapiranje tržišta", () => {
   it("prepoznaje 1/X/2, više od 1.5 i manje od 3.5 (pun meč)", () => {
     expect(resolveOutcomeMap(MARKETS)).toEqual({
       HOME: [{ marketId: "101", outcomeId: "101" }],
+      DRAW: [{ marketId: "101", outcomeId: "102" }], // value robot igra i X
       AWAY: [{ marketId: "101", outcomeId: "103" }],
       OVER_1_5: [{ marketId: "1010", outcomeId: "1010" }],
       UNDER_3_5: [{ marketId: "1014", outcomeId: "1015" }],
@@ -75,6 +76,22 @@ describe("OddsPapi – mapiranje tržišta", () => {
     } } };
     expect(Object.fromEntries(Object.entries(extractOdds(f, map, "admiralbet.rs")).map(([k, v]) => [k, v!.price])))
       .toEqual({ OVER_1_5: 1.2, UNDER_1_5: 4.2, OVER_3_5: 3.6, UNDER_3_5: 1.45 });
+  });
+
+  it("Value: dupla šansa i granica 2.5 (3+ / 0–2)", () => {
+    const map = resolveOutcomeMap([
+      { marketId: 300, marketName: "Double Chance", marketType: "doublechance", period: "fulltime", handicap: 0, playerProp: false, sportId: 10,
+        outcomes: [{ outcomeId: 301, outcomeName: "1X" }, { outcomeId: 302, outcomeName: "12" }, { outcomeId: 303, outcomeName: "X2" }] },
+      { marketId: 1012, marketName: "Over Under Full Time", marketType: "totals", period: "fulltime", handicap: 2.5, playerProp: false, sportId: 10,
+        outcomes: [{ outcomeId: 1012, outcomeName: "Over" }, { outcomeId: 1013, outcomeName: "Under" }] },
+      { marketId: 310, marketName: "Double Chance - 1st Half", marketType: "doublechance", period: "firsthalf", handicap: 0, playerProp: false, sportId: 10,
+        outcomes: [{ outcomeId: 311, outcomeName: "1X" }] },
+    ]);
+    expect(map.DC_1X).toEqual([{ marketId: "300", outcomeId: "301" }]);
+    expect(map.DC_12).toEqual([{ marketId: "300", outcomeId: "302" }]);
+    expect(map.DC_X2).toEqual([{ marketId: "300", outcomeId: "303" }]);
+    expect(map.OVER_2_5).toEqual([{ marketId: "1012", outcomeId: "1012" }]);
+    expect(map.UNDER_2_5).toEqual([{ marketId: "1012", outcomeId: "1013" }]);
   });
 
   it("Kontra: opsezi golova „0–1“ i „4+“", () => {

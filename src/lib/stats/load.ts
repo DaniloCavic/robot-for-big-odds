@@ -11,7 +11,7 @@ export type StatQuery = {
   includeDemo: boolean;
   filterSetId?: string | null;
   /** OSNOVNI / KONTRA / SVE (podrazumevano OSNOVNI – stari podaci su Osnovni) */
-  strategy?: "OSNOVNI" | "KONTRA" | "SVE";
+  strategy?: "OSNOVNI" | "KONTRA" | "VALUE" | "SVE";
 };
 
 export async function loadStatRows(q: StatQuery): Promise<StatRow[]> {
@@ -32,7 +32,7 @@ export async function loadStatRows(q: StatQuery): Promise<StatRow[]> {
   };
   const rows = await prisma.filterSetSelection.findMany({
     where,
-    include: { filterSet: { select: { id: true, name: true, strategy: true } }, trackedSelection: { include: { match: true } }, marketSelection: { select: { triggerOdds: true } } },
+    include: { filterSet: { select: { id: true, name: true, strategy: true } }, trackedSelection: { include: { match: true } }, marketSelection: { select: { triggerOdds: true, fairOdds: true, valuePct: true } } },
   });
   return rows.map((r) => ({
     status: r.settlementStatus,
@@ -51,6 +51,8 @@ export async function loadStatRows(q: StatQuery): Promise<StatRow[]> {
     away: r.trackedSelection.finalAwayScore,
     strategy: r.filterSet.strategy,
     triggerOdds: r.marketSelection.triggerOdds?.toNumber() ?? null,
+    fairOdds: r.marketSelection.fairOdds?.toNumber() ?? null,
+    valuePct: r.marketSelection.valuePct?.toNumber() ?? null,
   }));
 }
 

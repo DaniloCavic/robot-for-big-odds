@@ -59,29 +59,44 @@ test("prijava, navigacija kroz sve stranice i odjava", async ({ page, isMobile }
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test("podešavanja: prag okidača iznad 1.50 se odbija, prag i ulog se čuvaju trajno", async ({ page, isMobile }) => {
+test("podešavanja: pravila value robota i ulog se proveravaju i čuvaju trajno", async ({ page, isMobile }) => {
   test.skip(isMobile, "dovoljno na desktopu");
   await login(page);
   await page.goto("/podesavanja");
-  await expect(page.getByLabel("Maksimalna kvota")).toHaveCount(0); // pravila osnovnog robota se ovde ne podešavaju
-  const trig = page.getByLabel("Prag okidača (2+ ili 0–3)");
-  await expect(page.getByLabel("Prag favorita 1/2")).toHaveCount(0); // 1 i 2 se ne gledaju
+  await expect(page.getByLabel("Maksimalna kvota")).toHaveCount(0);
+  await expect(page.getByLabel("Prag okidača (2+ ili 0–3)")).toHaveCount(0);
+  const minPct = page.getByLabel("Najmanja vrednost (%)");
+  const minOdds = page.getByLabel("Najmanja kvota");
+  const maxOdds = page.getByLabel("Najveća kvota");
   const stake = page.getByLabel("Ulog po tipu (RSD)");
-  await expect(trig).toHaveValue("1.30");
+  await expect(minPct).toHaveValue("4.0");
+  await expect(minOdds).toHaveValue("1.50");
+  await expect(maxOdds).toHaveValue("5.00");
 
-  await trig.fill("1,60");
+  await minPct.fill("40");
   await page.getByRole("button", { name: "Sačuvaj" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: /./ })).toContainText("najviše 1.50");
+  await expect(page.getByRole("alert").filter({ hasText: /./ })).toContainText("najviše 30%");
+  await minPct.fill("4");
+  await minOdds.fill("3");
+  await maxOdds.fill("2,5");
+  await page.getByRole("button", { name: "Sačuvaj" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: /./ })).toContainText("manja od najveće");
 
-  await trig.fill("1,25");
+  await minPct.fill("5,5");
+  await minOdds.fill("1.60");
+  await maxOdds.fill("4");
   await stake.fill("500");
   await page.getByRole("button", { name: "Sačuvaj" }).click();
   await expect(page.getByRole("status")).toHaveText("Sačuvano.");
   await page.reload();
-  await expect(trig).toHaveValue("1.25");
+  await expect(minPct).toHaveValue("5.5");
+  await expect(minOdds).toHaveValue("1.60");
+  await expect(maxOdds).toHaveValue("4.00");
   await expect(stake).toHaveValue("500.00");
 
-  await trig.fill("1.30");
+  await minPct.fill("4");
+  await minOdds.fill("1.50");
+  await maxOdds.fill("5");
   await stake.fill("1000");
   await page.getByRole("button", { name: "Sačuvaj" }).click();
   await expect(page.getByRole("status")).toHaveText("Sačuvano.");

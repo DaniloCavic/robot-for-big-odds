@@ -52,9 +52,9 @@ test("desktop: prevlačenje, +, bez duplikata, trajno čuvanje, uklanjanje i či
   await page.mouse.up();
   await expect(count(page)).toHaveText("2");
 
-  // u filteru su samo 0–1 i 4+, po kvoti kladionice
+  // u filteru su value tipovi, po kvoti kladionice
   const labels = await page.locator("[data-testid=filter-list] li > span:first-child").allTextContents();
-  expect(labels.every((l) => l === "0–1" || l === "4+")).toBe(true);
+  expect(labels.every((l) => ["1", "X", "2", "1X", "X2", "12", "2+", "0–1", "3+", "0–2", "4+", "0–3"].includes(l))).toBe(true);
   const odds = await page.locator("[data-testid=filter-list] [data-odds]").evaluateAll((els) => els.map((e) => Number(e.getAttribute("data-odds"))));
   expect(odds.every((o) => o >= 1.01)).toBe(true);
 
@@ -88,7 +88,8 @@ test("desktop: prevlačenje, +, bez duplikata, trajno čuvanje, uklanjanje i či
   await page.getByRole("button", { name: /^Ukloni / }).count();
   await page.getByRole("button", { name: /^Dodaj (?!sve|spojeni)/ }).first().click();
   await expect(count(page)).toHaveText("1");
-  await page.getByRole("button", { name: "0–1", exact: true }).click();
+  const typeBtn = (await page.locator("[data-testid^=chip-] b").first().textContent())!;
+  await page.getByRole("button", { name: typeBtn, exact: true }).click();
   const bulk = page.getByRole("button", { name: /Dodaj sve u filter/ });
   const n = Number((await bulk.textContent())!.match(/\((\d+)\)/)![1]);
   expect(n).toBeGreaterThan(0);
@@ -96,7 +97,7 @@ test("desktop: prevlačenje, +, bez duplikata, trajno čuvanje, uklanjanje i či
   await bulk.click();
   await expect(page.getByRole("status").filter({ hasText: "Dodato" })).toContainText(`Dodato ${n} tipova`);
   await expect(bulk).toHaveText("Dodaj sve u filter (0)");
-  await page.getByRole("button", { name: "0–1", exact: true }).click();
+  await page.getByRole("button", { name: typeBtn, exact: true }).click();
 
   // 8) preimenovanje i brisanje filtera uz potvrdu
   await page.getByRole("button", { name: "Preimenuj" }).click();

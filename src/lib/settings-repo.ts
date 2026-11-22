@@ -16,6 +16,9 @@ export async function getSettings() {
     combineResultGoals: s.combineResultGoals,
     comboFallback: s.comboFallback as "SKIP" | "WINNER_ONLY" | "BOTH_SINGLE",
     kontraTriggerMax: s.kontraTriggerMax.toNumber(),
+    valueMinPct: s.valueMinPct.toNumber(),
+    valueMinOdds: s.valueMinOdds.toNumber(),
+    valueMaxOdds: s.valueMaxOdds.toNumber(),
     kontraFavoriteMax: s.kontraFavoriteMax.toNumber(),
     updatedAt: s.updatedAt,
   };

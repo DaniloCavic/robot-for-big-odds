@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { MARKET_LABELS, type MarketTypeCode } from "@/lib/odds";
 import { providerName } from "./providers";
-import type { KontraDiagnostics } from "./runner";
+import type { KontraDiagnostics, ValueDiagnostics } from "./runner";
 
 export async function getScanStatus(id: string) {
   const s = await prisma.robotScan.findUnique({ where: { id } });
@@ -10,7 +10,7 @@ export async function getScanStatus(id: string) {
   return {
     id: s.id,
     provider: s.provider,
-    strategy: s.strategy as "OSNOVNI" | "KONTRA",
+    strategy: s.strategy as "OSNOVNI" | "KONTRA" | "VALUE",
     providerName: providerName(s.provider),
     isDemo: s.isDemo,
     periodLabel: s.periodLabel,
@@ -43,6 +43,9 @@ export async function getScanStatus(id: string) {
       sharedRequests?: boolean;
       kontra?: KontraDiagnostics;
       kontraLog?: { match: string; odds: string; decision: string }[];
+      value?: ValueDiagnostics;
+      valueLog?: { match: string; ref: string; tips: string; best: string }[];
+      unmatchedLog?: string[];
     },
   };
 }
@@ -62,6 +65,10 @@ export async function getScanSelections(scanId: string) {
     odds: r.odds.toNumber(),
     /** Kontra: kvota okidača (2+ ili 0–3) */
     triggerOdds: r.triggerOdds?.toNumber() ?? null,
+    /** Value: poštena kvota (Pinnacle bez marže), Pinnacle kvota i vrednost u % */
+    fairOdds: r.fairOdds?.toNumber() ?? null,
+    refOdds: r.refOdds?.toNumber() ?? null,
+    valuePct: r.valuePct?.toNumber() ?? null,
     oddsTimestamp: r.oddsTimestamp.toISOString(),
     source: r.source,
     isDemo: r.isDemo,
@@ -76,6 +83,6 @@ export type SelectionDto = Awaited<ReturnType<typeof getScanSelections>>[number]
 
 /** Poslednja skeniranja skenera velikih kvota (Kontra). Stara skeniranja osnovnog robota se ne prikazuju. */
 export async function recentScans(limit = 5) {
-  const ids = await prisma.robotScan.findMany({ where: { strategy: "KONTRA" }, orderBy: { startedAt: "desc" }, take: limit, select: { id: true } });
+  const ids = await prisma.robotScan.findMany({ where: { strategy: "VALUE" }, orderBy: { startedAt: "desc" }, take: limit, select: { id: true } });
   return (await Promise.all(ids.map((i) => getScanStatus(i.id)))).filter(Boolean) as ScanStatusDto[];
 }

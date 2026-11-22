@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
-import { computeKontraStats, computeStats } from "@/lib/stats/compute";
+import { computeStats, computeValueStats } from "@/lib/stats/compute";
 import { loadStatRows } from "@/lib/stats/load";
 import { addDays, parseYmd, zonedMidnight } from "@/lib/time";
 
@@ -26,10 +26,10 @@ export async function GET(req: Request) {
   const to = t ? zonedMidnight(addDays(t, 1)) : null;
   const includeDemo = p.data.demo === "1";
   // skener velikih kvota: samo Kontra filteri (0–1, 4+); statistika osnovnih tipova se ovde ne računa
-  const rows = await loadStatRows({ from, to, scope: p.data.scope, includeDemo, filterSetId: p.data.filterSet || null, strategy: "KONTRA" });
+  const rows = await loadStatRows({ from, to, scope: p.data.scope, includeDemo, filterSetId: p.data.filterSet || null, strategy: "VALUE" });
   const base = computeStats(rows, p.data.granularity);
   return Response.json({
     overall: base.overall, timeline: base.timeline, byFilterSet: base.byFilterSet, byCompetition: base.byCompetition, recentLost: base.recentLost,
-    kontra: computeKontraStats(rows),
+    value: computeValueStats(rows),
   });
 }

@@ -7,6 +7,14 @@ import { isRealFootball } from "./football";
 import { applyMatchRules, type ComboFallback } from "./rules";
 import { applyKontraRules, KONTRA_DEFAULT_TRIGGER_MAX, KONTRA_SKIP_REASONS, type KontraSkipReason } from "./kontra-rules";
 import { getProvider } from "./providers";
+import { VALUE_TYPES, type ValueTypeCode } from "@/lib/odds";
+import { findFixture } from "@/lib/results/matching";
+import { apiFootballKey } from "@/lib/results/apifootball";
+import { dailyCount, incDaily } from "@/lib/results/job-state";
+import { AF_COUNTER } from "@/lib/results/tracker";
+import { buildReference, findValueTips, type RefMarkets } from "@/lib/value/rules";
+import { loadPinnacleDay, type RefFixture } from "@/lib/value/reference";
+import { addDays, ymdToString, zonedYmd } from "@/lib/time";
 import { ProviderError, RequestLimitReached, type OddsProvider, type ProviderFixture, type ScanContext } from "./types";
 
 /** Skeniranje koje nije javilo napredak duže od ovoga smatra se prekinutim (npr. restart servera). */
@@ -194,6 +202,140 @@ function kontraProcessor(scan: Scan, provider: OddsProvider): Processor {
   };
 }
 
+/** Dijagnostika value skeniranja (RobotScan.diagnostics.value). */
+export type ValueDiagnostics = {
+  opts: { minValuePct: number; minOdds: number; maxOdds: number };
+  reference: string;
+  /** Utakmice sa Pinnacle kvotama (API-Football) u periodu. */
+  refFixtures: number;
+  afRequests: number;
+  /** AdmiralBet utakmice spojene sa Pinnacle utakmicom / nespojene. */
+  matched: number;
+  unmatched: number;
+  /** Ukupno proverenih tipova (kvota kod obe kladionice). */
+  checked: number;
+  tips: number;
+  tipsByType: Record<string, number>;
+  /** Najveća vrednost po spojenoj utakmici – raspodela (koliko je tržište „blizu“). */
+  bestValue: Record<string, number>;
+  /** Koliko puta AdmiralBet nudi tip (provera mapiranja). */
+  admiralOffered: Record<string, number>;
+};
+
+const BEST_BUCKETS: [string, number][] = [["< 0%", 0], ["0–2%", 2], ["2–4%", 4], ["4–6%", 6], ["6–10%", 10], ["10%+", Infinity]];
+
+/** Beogradski datumi (YYYY-MM-DD) koje pokriva period [from, to). */
+function datesBetween(from: Date, to: Date): string[] {
+  const out: string[] = [];
+  let d = zonedYmd(from);
+  const last = ymdToString(zonedYmd(new Date(to.getTime() - 1)));
+  for (let i = 0; i < 15; i++) {
+    const s = ymdToString(d);
+    out.push(s);
+    if (s >= last) break;
+    d = addDays(d, 1);
+  }
+  return out;
+}
+
+/**
+ * Value robot: AdmiralBet (OddsPapi) kvote se porede sa Pinnacle kvotama bez marže (API-Football).
+ * Pinnacle kvote za ceo period se učitaju pre skeniranja (1 + broj strana zahteva po danu).
+ */
+async function valueProcessor(scan: Scan, provider: OddsProvider, settings: Settings): Promise<Processor> {
+  const scanId = scan.id;
+  const opts = {
+    minValuePct: settings?.valueMinPct.toNumber() ?? 4,
+    minOdds: settings?.valueMinOdds.toNumber() ?? 1.5,
+    maxOdds: settings?.valueMaxOdds.toNumber() ?? 5,
+  };
+  const vd: ValueDiagnostics = {
+    opts, reference: provider.isDemo ? "DEMO" : "Pinnacle (API-Football)", refFixtures: 0, afRequests: 0, matched: 0, unmatched: 0,
+    checked: 0, tips: 0, tipsByType: {}, bestValue: Object.fromEntries(BEST_BUCKETS.map(([k]) => [k, 0])),
+    admiralOffered: Object.fromEntries(VALUE_TYPES.map((t) => [t, 0])),
+  };
+  const valueLog: { match: string; ref: string; tips: string; best: string }[] = [];
+  const unmatchedLog: string[] = [];
+  let refs: RefFixture[] = [];
+  if (!provider.isDemo) {
+    const key = apiFootballKey();
+    if (!key) throw new ProviderError("Value robot uzima Pinnacle kvote iz API-Football-a – ključ APIFOOTBALL_API_KEY nije podešen na Railway-u.");
+    const cap = settings?.apiFootballDailyCap ?? 200;
+    for (const date of datesBetween(scan.startDate, scan.endDate)) {
+      const r = await loadPinnacleDay(date, {
+        apiKey: key,
+        beforeRequest: async () => {
+          if ((await dailyCount(prisma, AF_COUNTER)) >= cap) throw new ProviderError(`Potrošen je dnevni limit API-Football zahteva (${cap}). Povećaj ga u Podešavanjima (Pro paket: 7.500 dnevno).`);
+        },
+        onRequest: async () => { await incDaily(prisma, AF_COUNTER); vd.afRequests += 1; },
+      });
+      refs = refs.concat(r.fixtures);
+    }
+    vd.refFixtures = refs.length;
+    await prisma.robotScan.update({ where: { id: scanId }, data: { diagnostics: JSON.parse(JSON.stringify({ ...(scan.diagnostics as object), value: vd })) } });
+  }
+  const fmtTip = (t: { type: string; odds: number; fair: number; valuePct: number }) => `${MARKET_LABELS[t.type as MarketTypeCode]} @ ${t.odds.toFixed(2)} (fer ${t.fair.toFixed(2)}, ${t.valuePct > 0 ? "+" : ""}${t.valuePct.toFixed(1)}%)`;
+  let sinceWrite = 0;
+  return {
+    scanId,
+    finalDiagnostics: () => ({ value: vd, valueLog, unmatchedLog }),
+    async handle(fx) {
+      const ours: Partial<Record<ValueTypeCode, number>> = {};
+      for (const t of VALUE_TYPES) if (fx.odds[t]) { ours[t] = fx.odds[t]!.price; vd.admiralOffered[t] += 1; }
+      let markets: RefMarkets | null = null;
+      let refLabel = "";
+      if (provider.isDemo) {
+        markets = fx.demoReference ?? null;
+        refLabel = "DEMO";
+      } else {
+        const m = findFixture({ homeTeam: fx.homeTeam, awayTeam: fx.awayTeam, kickoffTime: fx.kickoffTime, competition: fx.competition }, refs);
+        if (m.status === "found") { markets = m.fixture.markets; refLabel = `${m.fixture.home} – ${m.fixture.away}`; }
+      }
+      let created = 0;
+      if (!markets) {
+        vd.unmatched += 1;
+        if (unmatchedLog.length < 60) unmatchedLog.push(`${fx.homeTeam} – ${fx.awayTeam} (${fx.competition})`);
+      } else {
+        vd.matched += 1;
+        const { tips, checked } = findValueTips(buildReference(markets), ours, opts);
+        vd.checked += checked.length;
+        if (checked.length) {
+          const best = checked.reduce((a, b) => (b.valuePct > a.valuePct ? b : a));
+          const bucket = BEST_BUCKETS.find(([, max]) => best.valuePct < max)![0];
+          vd.bestValue[bucket] += 1;
+          if (valueLog.length < 300 && (tips.length || best.valuePct >= 0)) {
+            valueLog.push({ match: `${fx.homeTeam} – ${fx.awayTeam}`, ref: refLabel, tips: tips.map(fmtTip).join(", "), best: fmtTip(best) });
+          }
+        }
+        if (tips.length) {
+          const match = await upsertMatch(provider, fx);
+          const res = await prisma.marketSelection.createMany({
+            data: tips.map((t) => ({
+              matchId: match.id, scanId, marketType: t.type, odds: new Prisma.Decimal(t.odds),
+              refOdds: t.ref != null ? new Prisma.Decimal(t.ref) : null, fairOdds: new Prisma.Decimal(t.fair), valuePct: new Prisma.Decimal(t.valuePct),
+              oddsTimestamp: fx.odds[t.type]!.changedAt, source: provider.sourceLabel, isDemo: provider.isDemo,
+            })),
+            skipDuplicates: true,
+          });
+          created = res.count;
+          vd.tips += created;
+          for (const t of tips) vd.tipsByType[t.type] = (vd.tipsByType[t.type] ?? 0) + 1;
+        }
+      }
+      sinceWrite += 1;
+      const writeDiag = created > 0 || sinceWrite >= 15;
+      if (writeDiag) sinceWrite = 0;
+      await prisma.robotScan.update({
+        where: { id: scanId },
+        data: {
+          fixturesScanned: { increment: 1 }, selectionsFound: { increment: created },
+          ...(writeDiag ? { diagnostics: JSON.parse(JSON.stringify({ ...(scan.diagnostics as object), value: vd })) } : {}),
+        },
+      });
+    },
+  };
+}
+
 /** Pokreće skeniranje. Ne baca grešku – sve greške se upisuju u RobotScan. */
 export async function runScan(scanId: string): Promise<void> {
   return runScans([scanId]);
@@ -216,7 +358,7 @@ export async function runScans(scanIds: string[]): Promise<void> {
     return;
   }
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
-  const processors = scans.map((s) => (s.strategy === "KONTRA" ? kontraProcessor(s, provider) : osnovniProcessor(s, provider, settings)));
+  const processors: Processor[] = [];
 
   const diag: Record<string, unknown> = {};
   let lastStopCheck = 0;
@@ -246,8 +388,13 @@ export async function runScans(scanIds: string[]): Promise<void> {
     },
   };
 
+  ctx.strategy = primary.strategy;
   let finalStatus: "COMPLETED" | "STOPPED" | "FAILED" = "COMPLETED";
   try {
+    for (const s of scans) {
+      processors.push(s.strategy === "VALUE" ? await valueProcessor(s, provider, settings)
+        : s.strategy === "KONTRA" ? kontraProcessor(s, provider) : osnovniProcessor(s, provider, settings));
+    }
     for await (const fx of provider.scan({ from: primary.startDate, to: primary.endDate }, ctx)) {
       const inRange = fx.kickoffTime >= primary.startDate && fx.kickoffTime < primary.endDate;
       if (!inRange || !isRealFootball(fx)) {
@@ -268,8 +415,14 @@ export async function runScans(scanIds: string[]): Promise<void> {
       for (const id of ids) await appendError(id, msg);
     }
   }
-  for (const [k, p] of processors.entries()) {
-    const own = (scans[k].diagnostics ?? {}) as Record<string, unknown>;
+  for (const [k, s] of scans.entries()) {
+    const p = processors[k];
+    const own = (s.diagnostics ?? {}) as Record<string, unknown>;
+    if (!p) {
+      // greška pre početka (npr. Pinnacle kvote nisu učitane)
+      await prisma.robotScan.update({ where: { id: s.id }, data: { status: finalStatus, finishedAt: new Date() } });
+      continue;
+    }
     await prisma.robotScan.update({
       where: { id: p.scanId },
       data: { status: finalStatus, finishedAt: new Date(), diagnostics: JSON.parse(JSON.stringify({ ...own, ...diag, ...p.finalDiagnostics() })) },

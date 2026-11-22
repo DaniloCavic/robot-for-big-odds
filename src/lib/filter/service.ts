@@ -2,8 +2,8 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { isCombo, isKontra, isValidOdds, MARKET_LABELS, type MarketTypeCode } from "@/lib/odds";
 import { KONTRA_MIN_ODDS } from "@/lib/robot/kontra-rules";
 
-export type StrategyCode = "OSNOVNI" | "KONTRA";
-export const STRATEGY_LABELS: Record<StrategyCode, string> = { OSNOVNI: "Osnovni", KONTRA: "Kontra" };
+export type StrategyCode = "OSNOVNI" | "KONTRA" | "VALUE";
+export const STRATEGY_LABELS: Record<StrategyCode, string> = { OSNOVNI: "Osnovni", KONTRA: "Kontra", VALUE: "Value" };
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -44,7 +44,7 @@ export type FilterSetDto = Awaited<ReturnType<typeof listFilterSets>>[number];
 export async function createFilterSet(db: Db, input: { name: unknown; userId: string | null; stake: number; strategy?: unknown }) {
   const name = cleanName(input.name);
   const strategy = input.strategy ?? "OSNOVNI";
-  if (strategy !== "OSNOVNI" && strategy !== "KONTRA") throw new FilterError("Nepoznata strategija filtera.");
+  if (strategy !== "OSNOVNI" && strategy !== "KONTRA" && strategy !== "VALUE") throw new FilterError("Nepoznata strategija filtera.");
   const set = await db.filterSet.create({ data: { name, userId: input.userId, stakePerSelection: input.stake, strategy } });
   return set.id;
 }
@@ -87,6 +87,8 @@ export async function listEntries(db: Db, filterSetId: string) {
       marketType: type,
       label: MARKET_LABELS[type],
       odds: r.oddsSnapshot.toNumber(),
+      fairOdds: r.marketSelection.fairOdds?.toNumber() ?? null,
+      valuePct: r.marketSelection.valuePct?.toNumber() ?? null,
       stake: r.stake.toNumber(),
       status: r.settlementStatus,
       grossReturn: r.grossReturn?.toNumber() ?? null,
@@ -119,37 +121,46 @@ export async function addEntry(db: PrismaClient, input: { filterSetId: string; m
     const ms = await tx.marketSelection.findUnique({ where: { id: input.marketSelectionId }, include: { match: true } });
     if (!ms) throw new FilterError("Tip ne postoji.", 404);
     if (ms.excludedReason) throw new FilterError("Ovaj tip je izbačen pravilom (2+ i 0–3 za istu utakmicu).");
-    // Filter pripada jednoj strategiji: kontra tipovi (0–1, 4+) samo u Kontra filter, ostali samo u Osnovni
-    const kontraType = isKontra(ms.marketType);
-    if (set.strategy === "KONTRA" && !kontraType) throw new FilterError(`Kontra filter prima samo 0–1 i 4+ (ovo je ${MARKET_LABELS[ms.marketType as MarketTypeCode]}).`);
-    if (set.strategy !== "KONTRA" && kontraType) throw new FilterError("Kontra tipovi (0–1, 4+) idu samo u Kontra filter – napravite filter sa strategijom Kontra.");
-    if (kontraType) {
-      const other = ms.marketType === "UNDER_1_5" ? "OVER_3_5" : "UNDER_1_5";
-      const clash = await tx.filterSetSelection.findFirst({
-        where: { filterSetId: set.id, removedAt: null, trackedSelection: { matchId: ms.matchId, marketType: other } },
-      });
-      if (clash) throw new FilterError("Ova utakmica već ima drugi kontra tip u filteru – igra se najviše jedan kontra tip po utakmici.");
-    }
-    if (!isCombo(ms.marketType)) {
-      const combo = await tx.filterSetSelection.findFirst({
-        where: { filterSetId: set.id, removedAt: null, trackedSelection: { matchId: ms.matchId, marketType: { in: ["HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5"] } } },
-      });
-      if (combo) throw new FilterError("Ova utakmica je u filteru kao spojeni tip – pojedinačni tip se ne dodaje.");
-    }
-    if (input.excludeGoalsPair !== false && (ms.marketType === "OVER_1_5" || ms.marketType === "UNDER_3_5")) {
-      const other = ms.marketType === "OVER_1_5" ? "UNDER_3_5" : "OVER_1_5";
-      const clash = await tx.filterSetSelection.findFirst({
-        where: { filterSetId: set.id, removedAt: null, trackedSelection: { matchId: ms.matchId, marketType: other } },
-      });
-      if (clash) throw new FilterError("Ova utakmica već ima suprotan tip golova (2+ / 0–3) u filteru – takve utakmice se ne igraju.");
-    }
-    if (ms.match.kickoffTime <= now) throw new FilterError("Utakmica je već počela – tip ne može da se doda.");
-    const odds = ms.odds.toNumber();
-    // kontra tipovi (0–1, 4+): bez gornje granice, najmanje 1.01
-    if (kontraType && odds < KONTRA_MIN_ODDS - 1e-9) throw new FilterError(`Kvota ${odds.toFixed(2)} je ispod najmanje dozvoljene ${KONTRA_MIN_ODDS.toFixed(2)} za kontra tip.`);
-    // pojedinačni tipovi: do maks. kvote; spojeni tipovi („1&2+“…): bez ograničenja, samo veća od 1.00
-    if (!kontraType && (isCombo(ms.marketType) ? !(odds > 1) : !isValidOdds(odds, input.maxOdds))) {
-      throw new FilterError(`Kvota ${odds.toFixed(2)} je iznad dozvoljene ${input.maxOdds.toFixed(2)}.`);
+    // Value filter: samo tipovi koje je našao value robot (imaju vrednost u odnosu na Pinnacle), po kvoti kladionice
+    const valueTip = ms.valuePct != null;
+    if (set.strategy === "VALUE" || valueTip) {
+      if (set.strategy !== "VALUE") throw new FilterError("Value tipovi idu samo u Value filter.");
+      if (!valueTip) throw new FilterError("Value filter prima samo tipove koje je našao value robot.");
+      if (ms.match.kickoffTime <= now) throw new FilterError("Utakmica je već počela – tip ne može da se doda.");
+      if (!(ms.odds.toNumber() > 1)) throw new FilterError("Neispravna kvota.");
+    } else {
+      // Filter pripada jednoj strategiji: kontra tipovi (0–1, 4+) samo u Kontra filter, ostali samo u Osnovni
+      const kontraType = isKontra(ms.marketType);
+      if (set.strategy === "KONTRA" && !kontraType) throw new FilterError(`Kontra filter prima samo 0–1 i 4+ (ovo je ${MARKET_LABELS[ms.marketType as MarketTypeCode]}).`);
+      if (set.strategy !== "KONTRA" && kontraType) throw new FilterError("Kontra tipovi (0–1, 4+) idu samo u Kontra filter – napravite filter sa strategijom Kontra.");
+      if (kontraType) {
+        const other = ms.marketType === "UNDER_1_5" ? "OVER_3_5" : "UNDER_1_5";
+        const clash = await tx.filterSetSelection.findFirst({
+          where: { filterSetId: set.id, removedAt: null, trackedSelection: { matchId: ms.matchId, marketType: other } },
+        });
+        if (clash) throw new FilterError("Ova utakmica već ima drugi kontra tip u filteru – igra se najviše jedan kontra tip po utakmici.");
+      }
+      if (!isCombo(ms.marketType)) {
+        const combo = await tx.filterSetSelection.findFirst({
+          where: { filterSetId: set.id, removedAt: null, trackedSelection: { matchId: ms.matchId, marketType: { in: ["HOME_OVER_1_5", "HOME_UNDER_3_5", "AWAY_OVER_1_5", "AWAY_UNDER_3_5"] } } },
+        });
+        if (combo) throw new FilterError("Ova utakmica je u filteru kao spojeni tip – pojedinačni tip se ne dodaje.");
+      }
+      if (input.excludeGoalsPair !== false && (ms.marketType === "OVER_1_5" || ms.marketType === "UNDER_3_5")) {
+        const other = ms.marketType === "OVER_1_5" ? "UNDER_3_5" : "OVER_1_5";
+        const clash = await tx.filterSetSelection.findFirst({
+          where: { filterSetId: set.id, removedAt: null, trackedSelection: { matchId: ms.matchId, marketType: other } },
+        });
+        if (clash) throw new FilterError("Ova utakmica već ima suprotan tip golova (2+ / 0–3) u filteru – takve utakmice se ne igraju.");
+      }
+      if (ms.match.kickoffTime <= now) throw new FilterError("Utakmica je već počela – tip ne može da se doda.");
+      const odds = ms.odds.toNumber();
+      // kontra tipovi (0–1, 4+): bez gornje granice, najmanje 1.01
+      if (kontraType && odds < KONTRA_MIN_ODDS - 1e-9) throw new FilterError(`Kvota ${odds.toFixed(2)} je ispod najmanje dozvoljene ${KONTRA_MIN_ODDS.toFixed(2)} za kontra tip.`);
+      // pojedinačni tipovi: do maks. kvote; spojeni tipovi („1&2+“…): bez ograničenja, samo veća od 1.00
+      if (!kontraType && (isCombo(ms.marketType) ? !(odds > 1) : !isValidOdds(odds, input.maxOdds))) {
+        throw new FilterError(`Kvota ${odds.toFixed(2)} je iznad dozvoljene ${input.maxOdds.toFixed(2)}.`);
+      }
     }
 
     const type = ms.marketType as MarketTypeCode;
@@ -189,7 +200,7 @@ export async function addEntries(db: PrismaClient, input: { filterSetId: string;
       if (e.status === 409) result.duplicate += 1;
       else if (/počela/.test(e.message)) result.started += 1;
       else if (/2\+ \/ 0–3|izbačen pravilom|spojeni tip|drugi kontra tip/.test(e.message)) result.pair = (result.pair ?? 0) + 1;
-      else if (/Kontra filter|Kontra tipovi/.test(e.message)) result.strategy = (result.strategy ?? 0) + 1;
+      else if (/Kontra filter|Kontra tipovi|Value filter|Value tipovi/.test(e.message)) result.strategy = (result.strategy ?? 0) + 1;
       else result.invalid += 1;
     }
   }

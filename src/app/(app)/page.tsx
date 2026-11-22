@@ -8,18 +8,18 @@ import { prisma } from "@/lib/db";
 import { activeEntriesWhere, entrySummary } from "@/lib/results/queries";
 
 export default async function DashboardPage() {
-  // skener velikih kvota: samo Kontra filteri (0–1, 4+)
-  const kontra = { removedAt: null, filterSet: { status: { not: "DELETED" as const }, strategy: "KONTRA" as const } };
+  // value betting: samo Value filteri
+  const kontra = { removedAt: null, filterSet: { status: { not: "DELETED" as const }, strategy: "VALUE" as const } };
   const [settings, [last], active, planned, sum] = await Promise.all([
     getSettings(),
     recentScans(1),
     prisma.trackedSelection.count({ where: { status: { in: ["PENDING", "LIVE"] }, filterEntries: { some: kontra } } }),
     prisma.filterSetSelection.aggregate({ where: { ...kontra, settlementStatus: { in: ["PENDING", "LIVE"] } }, _sum: { stake: true } }),
-    entrySummary({ ...activeEntriesWhere, filterSet: { status: { not: "DELETED" }, strategy: "KONTRA" } }),
+    entrySummary({ ...activeEntriesWhere, filterSet: { status: { not: "DELETED" }, strategy: "VALUE" } }),
   ]);
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Skener velikih kvota – tipovi 0–1 i 4+.">
+      <PageHeader title="Dashboard" subtitle="Value betting – AdmiralBet naspram Pinnacle-a.">
         <Link href="/robot" className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-3 font-semibold text-bg hover:bg-accent-strong">
           <IconRobot /> START ROBOT
         </Link>
@@ -49,9 +49,11 @@ export default async function DashboardPage() {
         <Card>
           <h2 className="mb-4 font-semibold">Pravila</h2>
           <dl className="space-y-3 text-sm">
-            <div className="flex justify-between gap-4"><dt className="text-muted">Okidač (2+ ili 0–3)</dt><dd className="font-medium tabular-nums">do {formatOdds(settings.kontraTriggerMax)}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-muted">Referenca</dt><dd className="font-medium">Pinnacle bez marže</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-muted">Najmanja vrednost</dt><dd className="font-medium tabular-nums">{settings.valueMinPct}%</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-muted">Kvote</dt><dd className="font-medium tabular-nums">{formatOdds(settings.valueMinOdds)}–{formatOdds(settings.valueMaxOdds)}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-muted">Tipovi</dt><dd className="font-medium">1, X, 2, 1X, X2, 12, golovi</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Ulog po tipu</dt><dd className="font-medium tabular-nums">{formatRsd(settings.stakePerSelection)}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-muted">Tipovi</dt><dd className="font-medium">0–1 (umesto 2+), 4+ (umesto 0–3)</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Sport</dt><dd className="font-medium">Samo pravi fudbal</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Vremenska zona</dt><dd className="font-medium">{settings.timezone}</dd></div>
           </dl>

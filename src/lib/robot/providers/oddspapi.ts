@@ -1,4 +1,4 @@
-import { KONTRA_TYPES, MARKET_TYPES, type MarketTypeCode } from "@/lib/odds";
+import { VALUE_TYPES, type MarketTypeCode } from "@/lib/odds";
 import { ProviderError, RequestLimitReached, type OddsProvider, type ProviderFixture, type ScanContext } from "../types";
 
 /**
@@ -78,6 +78,7 @@ export function resolveOutcomeMap(markets: OddsPapiMarket[]): OutcomeMap {
   };
   for (const m of ft.filter((x) => x.marketType === "1x2" && x.outcomes.length === 3 && !EXCLUDED_TOTALS.test(x.marketName))) {
     add("HOME", m, /^1$/);
+    add("DRAW", m, /^x$/i);
     add("AWAY", m, /^2$/);
   }
   // 1) Klasično: "Over Under" sa granicom 1.5 (Over = 2+) i 3.5 (Under = 0–3)
@@ -88,6 +89,15 @@ export function resolveOutcomeMap(markets: OddsPapiMarket[]): OutcomeMap {
   // Kontra robot: suprotni ishodi istih tržišta (Under 1.5 = 0–1, Over 3.5 = 4+) – isti odgovor kladionice, bez dodatnih zahteva
   for (const m of totals(1.5)) add("UNDER_1_5", m, /^(under|under\s*1\.5|-1\.5)$/i);
   for (const m of totals(3.5)) add("OVER_3_5", m, /^(over|over\s*3\.5|\+3\.5)$/i);
+  // Value robot: 3+ / 0–2 (granica 2.5)
+  for (const m of totals(2.5)) add("OVER_2_5", m, /^(over|over\s*2\.5|\+2\.5)$/i);
+  for (const m of totals(2.5)) add("UNDER_2_5", m, /^(under|under\s*2\.5|-2\.5)$/i);
+  // Value robot: dupla šansa (1X, X2, 12)
+  for (const m of ft.filter((x) => /double chance/i.test(`${x.marketName} ${x.marketType}`) && !EXCLUDED_TOTALS.test(x.marketName.replace(/double chance/i, "")))) {
+    add("DC_1X", m, /^(1x|1\s*or\s*x|home\s*or\s*draw|1\/x)$/i);
+    add("DC_X2", m, /^(x2|x\s*or\s*2|draw\s*or\s*away|x\/2)$/i);
+    add("DC_12", m, /^(12|1\s*or\s*2|home\s*or\s*away|1\/2)$/i);
+  }
   // 2) Tržišta gde je sam ishod "2+" ili "0–3" (opsezi golova, "ukupno golova")
   const goalish = ft.filter((m) => !EXCLUDED_TOTALS.test(m.marketName) && /(goal|total|range|over|under|ukupno)/i.test(`${m.marketName} ${m.marketType}`));
   for (const m of goalish) {
@@ -95,6 +105,8 @@ export function resolveOutcomeMap(markets: OddsPapiMarket[]): OutcomeMap {
     add("UNDER_3_5", m, /^(0\s*[-–]\s*3( goals)?|0 to 3( goals)?|3 or (less|fewer)( goals)?|under 3\.5( goals)?|max(imum)? 3)$/i);
     add("UNDER_1_5", m, /^(0\s*[-–]\s*1( goals?)?|0 to 1( goals?)?|1 or (less|fewer)( goals?)?|under 1\.5( goals)?|max(imum)? 1)$/i);
     add("OVER_3_5", m, /^(4\+|4\s*\+\s*goals?|4 or more( goals)?|4 and more|at least 4( goals)?|over 3\.5( goals)?|4\s*-\s*more)$/i);
+    add("OVER_2_5", m, /^(3\+|3\s*\+\s*goals?|3 or more( goals)?|3 and more|at least 3( goals)?|over 2\.5( goals)?|3\s*-\s*more)$/i);
+    add("UNDER_2_5", m, /^(0\s*[-–]\s*2( goals)?|0 to 2( goals)?|2 or (less|fewer)( goals)?|under 2\.5( goals)?|max(imum)? 2)$/i);
   }
   // Kontra: poznate šifre OddsPapi tržišta (Over/Under 1.5 = 108, Over/Under 3.5 = 1012), ako postoje u katalogu
   for (const [type, marketId, outcomeId] of KONTRA_KNOWN_IDS) {
@@ -371,8 +383,8 @@ export async function compareBookmakers(apiKey: string, fixtureId: string, fetch
     competition: [fx.categoryName, fx.tournamentName].filter(Boolean).join(" · "),
     startTime: fx.startTime,
     bookmakers: ODDSPAPI_BOOKMAKERS.map((b) => {
-      // tipovi koje koristi skener: 1, 2, 2+, 0–3 (okidači i favorit) i 0–1, 4+ (igra se) – bez spojenih
-      const odds = Object.fromEntries(Object.entries(extractOdds(fx, marketsCache!.map, b.slug)).filter(([k]) => ([...MARKET_TYPES, ...KONTRA_TYPES] as readonly string[]).includes(k))) as ProviderFixture["odds"];
+      // tipovi value robota (1, X, 2, dupla šansa, golovi) – bez spojenih
+      const odds = Object.fromEntries(Object.entries(extractOdds(fx, marketsCache!.map, b.slug)).filter(([k]) => (VALUE_TYPES as readonly string[]).includes(k))) as ProviderFixture["odds"];
       // Sva tržišta za golove (pun meč) sa svim ishodima – da se vidi gde je npr. "2+"
       const goals = Object.entries(fx.bookmakerOdds?.[b.slug]?.markets ?? {})
         .filter(([mid]) => { const n = marketsCache!.names.get(mid) ?? "?"; return GOAL_MARKET.test(n) && !NOT_GOAL.test(n); })

@@ -24,12 +24,16 @@ export async function saveSettingsAction(_prev: SettingsState, formData: FormDat
     excludeGoalsPair: before.excludeGoalsPair,
     combineResultGoals: before.combineResultGoals,
     comboFallback: before.comboFallback,
-    kontraTriggerMax: normalizeDecimal(formData.get("kontraTriggerMax")) || undefined,
+    kontraTriggerMax: before.kontraTriggerMax,
+    valueMinPct: normalizeDecimal(formData.get("valueMinPct")) || undefined,
+    valueMinOdds: normalizeDecimal(formData.get("valueMinOdds")) || undefined,
+    valueMaxOdds: normalizeDecimal(formData.get("valueMaxOdds")) || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (parsed.data.valueMinOdds >= parsed.data.valueMaxOdds) return { error: "Najmanja kvota mora biti manja od najveće." };
 
   const next = parsed.data;
-  const keys = ["maxOdds", "stakePerSelection", "maxRequestsPerScan", "resultCheckMinutes", "apiFootballDailyCap", "oddsPapiResultChecksPerDay", "excludeGoalsPair", "combineResultGoals", "comboFallback", "kontraTriggerMax"] as const;
+  const keys = ["maxOdds", "stakePerSelection", "maxRequestsPerScan", "resultCheckMinutes", "apiFootballDailyCap", "oddsPapiResultChecksPerDay", "excludeGoalsPair", "combineResultGoals", "comboFallback", "kontraTriggerMax", "valueMinPct", "valueMinOdds", "valueMaxOdds"] as const;
   if (keys.every((k) => before[k] === next[k])) return { ok: true };
 
   await prisma.$transaction([

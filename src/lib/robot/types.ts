@@ -1,4 +1,5 @@
 import type { MarketTypeCode } from "@/lib/odds";
+import type { RefMarkets } from "@/lib/value/rules";
 
 export type ProviderOdds = { price: number; changedAt: Date };
 
@@ -15,6 +16,8 @@ export type ProviderFixture = {
   rawMarketIds?: string[];
   /** Kvote koje provajder trenutno nudi (bez ikakvog filtriranja). */
   odds: Partial<Record<MarketTypeCode, ProviderOdds>>;
+  /** Samo DEMO value: izmišljene „Pinnacle“ kvote (umesto API-Football-a). */
+  demoReference?: RefMarkets;
 };
 
 export type ScanContext = {
@@ -26,6 +29,8 @@ export type ScanContext = {
   maxRequests: number;
   warn: (msg: string) => Promise<void>;
   diagnostic?: (data: Record<string, unknown>) => Promise<void>;
+  /** Strategija skeniranja (DEMO izvor za VALUE pravi drugačije utakmice). */
+  strategy?: string;
 };
 
 export type ProviderInfo = {

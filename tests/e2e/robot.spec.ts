@@ -30,8 +30,8 @@ test("STOP zaustavlja robota", async ({ page, isMobile }) => {
   await expect(page.getByRole("button", { name: /START ROBOT/ })).toBeVisible();
 });
 
-test("DEMO skeniranje: samo 0–1 i 4+ sa kvotom okidača, virtuelni fudbal izbačen, preskoci i dijagnostika", async ({ page }) => {
-  await expect(page.getByTestId("rules-info")).toContainText("1.30");
+test("DEMO value skeniranje: samo tipovi sa vrednošću, virtuelni fudbal izbačen, dijagnostika", async ({ page }) => {
+  await expect(page.getByTestId("rules-info")).toContainText("Pinnacle");
   await page.getByRole("button", { name: "Narednih 7 dana", exact: true }).click();
   await page.getByRole("button", { name: /START ROBOT/ }).click();
   await expect(page.getByTestId("scan-status")).toHaveText("Radi");
@@ -39,33 +39,34 @@ test("DEMO skeniranje: samo 0–1 i 4+ sa kvotom okidača, virtuelni fudbal izba
 
   const found = Number(await page.getByTestId("found").textContent());
   expect(found).toBeGreaterThan(0);
-  expect(Number(await page.getByTestId("kontra-trigger").textContent())).toBeGreaterThanOrEqual(found);
-  await expect(page.getByTestId("kontra-skip-OBA_GOLA")).not.toHaveText("0");
-  await expect(page.getByTestId("kontra-skip-FAVORIT_1_2")).toHaveCount(0); // 1 i 2 se ne gledaju
+  expect(Number(await page.getByTestId("matched").textContent())).toBeGreaterThan(0);
   await expect(page.getByText("Izbačeno (virtuelno i sl.)").locator("..").locator("dd")).not.toHaveText("0");
   await expect(page.getByText("Virtual")).toHaveCount(0);
 
   const chips = page.locator("[data-testid=selections] [data-odds]");
   await expect(chips).toHaveCount(found);
   const labels = await chips.locator("span.font-semibold").allTextContents();
-  expect(labels.every((l) => l === "0–1" || l === "4+")).toBe(true);
+  expect(labels.every((l) => ["1", "X", "2", "1X", "X2", "12", "2+", "0–1", "3+", "0–2", "4+", "0–3"].includes(l))).toBe(true);
   const odds = await chips.evaluateAll((els) => els.map((e) => Number(e.getAttribute("data-odds"))));
-  expect(odds.some((o) => o > 1.3)).toBe(true); // bez gornje granice kvote
-  await expect(page.getByTestId("trigger-odds").first()).toContainText("okidač");
+  expect(odds.every((o) => o >= 1.5 && o <= 5)).toBe(true);
+  const values = await page.getByTestId("value-info").allTextContents();
+  expect(values.length).toBe(found);
+  expect(values.every((v) => Number(v.match(/\+([\d.]+)%/)![1]) >= 4)).toBe(true);
   await expect(page.locator("[data-testid=selections]").getByText("DEMO", { exact: true }).first()).toBeVisible();
 
   // filter po tipu i sortiranje po kvoti
-  await page.getByRole("button", { name: "0–1", exact: true }).click();
+  const first = labels[0];
+  await page.getByRole("button", { name: first, exact: true }).click();
   const only = await page.locator("[data-testid=selections] [data-odds] span.font-semibold").allTextContents();
   expect(only.length).toBeGreaterThan(0);
-  expect(only.every((l) => l === "0–1")).toBe(true);
+  expect(only.every((l) => l === first)).toBe(true);
   await page.getByLabel("Sortiranje").selectOption("odds");
   const sorted = await page.locator("[data-testid=selections] td[data-odds]").evaluateAll((els) => els.map((e) => Number(e.getAttribute("data-odds"))));
   expect(sorted).toEqual([...sorted].sort((a, b) => a - b));
 
   // dijagnostika
   await page.getByText("Dijagnostika skeniranja").click();
-  await expect(page.getByTestId("kontra-log")).toBeVisible();
+  await expect(page.getByTestId("value-log")).toBeVisible();
 
   // dashboard pokazuje poslednje skeniranje
   await page.goto("/");

@@ -18,7 +18,7 @@ const fmtShort = new Intl.DateTimeFormat("sr-Latn-RS", { timeZone: TZ, day: "2-d
 const dayKey = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(iso));
 const fmtDay = (key: string) => new Intl.DateTimeFormat("sr-Latn-RS", { weekday: "short", day: "2-digit", month: "2-digit" }).format(new Date(`${key}T12:00:00Z`));
 const rsd = (n: number) => new Intl.NumberFormat("sr-Latn-RS", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + " RSD";
-const KONTRA_TYPES = ["0–1", "4+"] as const;
+const VALUE_LABELS = ["1", "X", "2", "1X", "X2", "12", "2+", "0–1", "3+", "0–2", "4+", "0–3"] as const;
 
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -247,9 +247,9 @@ export function FilterClient({ initialSets, scans }: { initialSets: FilterSetDto
                   </select>
                 </div>
                 <div className="flex flex-wrap gap-1 sm:col-span-2">
-                  {KONTRA_TYPES.map((t) => (
+                  {VALUE_LABELS.map((t) => (
                     <button key={t} type="button" aria-pressed={types.includes(t)} onClick={() => setTypes((x) => (x.includes(t) ? x.filter((y) => y !== t) : [...x, t]))}
-                      className={`min-w-11 flex-1 rounded-lg border px-2 py-2 text-sm ${types.includes(t) ? "border-accent/60 bg-accent/10 text-accent" : "border-line text-muted"}`}>{t}</button>
+                      className={`min-w-10 flex-1 rounded-lg border px-2 py-2 text-sm ${types.includes(t) ? "border-accent/60 bg-accent/10 text-accent" : "border-line text-muted"}`}>{t}</button>
                   ))}
                 </div>
                 <div className="flex items-center gap-2 text-sm text-muted">
@@ -374,7 +374,7 @@ export function FilterClient({ initialSets, scans }: { initialSets: FilterSetDto
                         <span className="grid h-9 min-w-12 place-items-center rounded-lg bg-accent/10 px-2 font-semibold text-accent">{e.label}</span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium">{e.homeTeam} – {e.awayTeam}</p>
-                          <p className="truncate text-xs text-muted">{fmt.format(new Date(e.kickoffTime))} · {e.competition} · {e.source} {e.isDemo && <DemoBadge />}</p>
+                          <p className="truncate text-xs text-muted">{fmt.format(new Date(e.kickoffTime))} · {e.competition}{e.valuePct != null ? ` · fer ${e.fairOdds?.toFixed(2)} (+${e.valuePct.toFixed(1)}%)` : ""} · {e.source} {e.isDemo && <DemoBadge />}</p>
                         </div>
                         <span className="tabular-nums text-accent" data-odds={e.odds} data-combo={e.label.includes("&") ? "1" : undefined}>{e.odds.toFixed(2)}</span>
                         <span className="hidden flex-col items-end gap-0.5 sm:flex">
@@ -428,7 +428,7 @@ function TipChip({ sel, added, disabled, onAdd }: { sel: SelectionDto; added: bo
         className={`flex touch-none items-center gap-1.5 px-2.5 py-1.5 ${locked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}>
         {!locked && <IconGrip className="h-3.5 w-3.5 text-muted" />}
         <b>{sel.label}</b> <span className="tabular-nums text-accent">{sel.odds.toFixed(2)}</span>
-        {sel.triggerOdds != null && <span className="text-[11px] text-muted">okidač {sel.triggerOdds.toFixed(2)}</span>}
+        {sel.valuePct != null && <span className="text-[11px] text-won" title={`Poštena kvota ${sel.fairOdds?.toFixed(2)}`}>+{sel.valuePct.toFixed(1)}%</span>}
       </span>
       {added ? (
         <span className="border-l border-accent/40 px-2 py-1.5 text-accent" title="Već u filteru" aria-label="Već u filteru">✓</span>

@@ -4,6 +4,8 @@ import { E2E_ENV } from "../../playwright.config";
 
 test.describe.configure({ mode: "serial" });
 
+const LABEL: Record<string, string> = { HOME: "1", DRAW: "X", AWAY: "2", DC_1X: "1X", DC_X2: "X2", DC_12: "12", OVER_1_5: "2+", UNDER_1_5: "0–1", OVER_2_5: "3+", UNDER_2_5: "0–2", OVER_3_5: "4+", UNDER_3_5: "0–3" };
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill(E2E_ENV.ADMIN_EMAIL);
@@ -33,9 +35,9 @@ test("ceo tok: skeniranje → „Dodaj sve“ u filter → ručni rezultat → p
   await expect(page.getByRole("status").filter({ hasText: "Dodato" })).toBeVisible();
   await expect(page.getByTestId("filter-count")).not.toHaveText("0");
   const labels = await page.locator("[data-testid=filter-list] li > span:first-child").allTextContents();
-  expect(labels.every((l) => l === "0–1" || l === "4+")).toBe(true);
+  expect(labels.every((l) => ["1", "X", "2", "1X", "X2", "12", "2+", "0–1", "3+", "0–2", "4+", "0–3"].includes(l))).toBe(true);
   const odds = await page.locator("[data-testid=filter-list] [data-odds]").evaluateAll((els) => els.map((e) => Number(e.getAttribute("data-odds"))));
-  expect(odds.some((o) => o > 1.3)).toBe(true); // kontra kvote iznad 1.30 se prihvataju
+  expect(odds.some((o) => o > 1.3)).toBe(true); // value kvote nisu ograničene na 1.30
 
   // 3) Ručno postavljen rezultat za prvi tip iz filtera (pobednički rezultat za taj tip)
   const db = new PrismaClient({ datasourceUrl: E2E_ENV.DATABASE_URL });
@@ -44,16 +46,22 @@ test("ceo tok: skeniranje → „Dodaj sve“ u filter → ručni rezultat → p
     where: { filterSet: { name }, removedAt: null, trackedSelection: { status: "PENDING" } }, include: { trackedSelection: { include: { match: true } } }, orderBy: { addedAt: "asc" },
   });
   const t = entry.trackedSelection;
+  const originalKickoff = t.match.kickoffTime;
   await db.match.update({ where: { id: t.matchId }, data: { kickoffTime: new Date(Date.now() - 3 * 3600_000) } });
-  const [h, a] = t.marketType === "UNDER_1_5" ? ["1", "0"] : ["2", "2"];
+  // rezultat pri kome tip prolazi
+  const WIN: Record<string, [string, string]> = {
+    HOME: ["2", "0"], DRAW: ["1", "1"], AWAY: ["0", "2"], DC_1X: ["1", "0"], DC_X2: ["0", "1"], DC_12: ["2", "1"],
+    OVER_1_5: ["2", "1"], UNDER_1_5: ["1", "0"], OVER_2_5: ["2", "1"], UNDER_2_5: ["1", "1"], OVER_3_5: ["3", "1"], UNDER_3_5: ["1", "0"],
+  };
+  const [h, a] = WIN[t.marketType];
   await page.goto("/aktivne");
   await page.locator("[data-testid=tracked-table] tbody tr").filter({ hasText: `${t.match.homeTeam} – ${t.match.awayTeam}` })
-    .filter({ hasText: t.marketType === "UNDER_1_5" ? "0–1" : "4+" }).first().click();
+    .filter({ has: page.locator("td", { hasText: new RegExp(`^${LABEL[t.marketType].replace("+", "\\+")}$`) }) }).first().click();
   const dialog = page.getByRole("dialog", { name: "Detalji selekcije" });
   await dialog.getByLabel("Novi status").selectOption("AUTO");
   await dialog.getByLabel("Golovi domaćin").fill(h);
   await dialog.getByLabel("Golovi gost").fill(a);
-  await dialog.getByLabel("Obrazloženje").fill("Proveren rezultat – E2E test Kontra");
+  await dialog.getByLabel("Obrazloženje").fill("Proveren rezultat – E2E test Value");
   await dialog.getByRole("button", { name: "Sačuvaj ispravku" }).click();
   await expect(dialog.getByText("(ručno)")).toBeVisible();
 
@@ -67,32 +75,31 @@ test("ceo tok: skeniranje → „Dodaj sve“ u filter → ručni rezultat → p
   await expect(page.getByTestId("filter-summary")).toBeVisible();
   const netText = (await page.getByTestId("filter-net").textContent())!;
   expect(Number(netText.replace(/[^\d,-]/g, "").replace(/\./g, "").replace(",", "."))).toBeCloseTo(expectedNet, 2);
-  // 5) Statistika: prolaz i profit za 0–1 / 4+
-  const kontraSettled = await db.filterSetSelection.findMany({
-    where: { removedAt: null, filterSet: { status: { not: "DELETED" }, strategy: "KONTRA" }, settlementStatus: { in: ["WON", "LOST", "VOID"] } },
+  // 5) Statistika: prolaz, profit i očekivani profit
+  const valueSettled = await db.filterSetSelection.findMany({
+    where: { removedAt: null, filterSet: { status: { not: "DELETED" }, strategy: "VALUE" }, settlementStatus: { in: ["WON", "LOST", "VOID"] } },
     include: { trackedSelection: true },
   });
-  const kontraNet = Math.round(kontraSettled.reduce((acc, e) => acc + Number(e.netProfit), 0));
+  const valueNet = Math.round(valueSettled.reduce((acc, e) => acc + Number(e.netProfit), 0));
   await page.goto("/statistika");
   await page.getByLabel("DEMO").check();
   await page.getByRole("button", { name: "Sve", exact: true }).click(); // ceo period (demo utakmice su i u budućnosti)
-  await expect(page.getByTestId("kontra-stats")).toBeVisible();
+  await expect(page.getByTestId("value-stats")).toBeVisible();
   await expect(page.getByTestId("kpi-net")).toBeVisible();
-  await expect.poll(async () => Number((await page.getByTestId("kpi-net").textContent())!.replace(/[^\d-]/g, ""))).toBe(kontraNet);
-  const typeRow = page.getByTestId("kontra-by-type").locator(`tr[data-row=${t.marketType}]`);
-  const ofType = kontraSettled.filter((e) => e.trackedSelectionId === t.id || e.trackedSelection.marketType === t.marketType);
+  await expect.poll(async () => Number((await page.getByTestId("kpi-net").textContent())!.replace(/[^\d-]/g, ""))).toBe(valueNet);
+  const typeRow = page.getByTestId("value-by-type").locator(`tr[data-row=${t.marketType}]`);
+  const ofType = valueSettled.filter((e) => e.trackedSelectionId === t.id || e.trackedSelection.marketType === t.marketType);
   await expect(typeRow).toContainText(`${ofType.filter((e) => e.settlementStatus === "WON").length} / ${ofType.filter((e) => e.settlementStatus === "LOST").length}`);
-  await expect(page.getByTestId("kontra-by-trigger")).toContainText("1.21–1.30");
-  await expect(page.getByTestId("kontra-comparison")).toHaveCount(0); // bez statistike za 2+ / 0–3
+  await expect(page.getByTestId("value-expected")).toContainText("Očekivani profit");
 
   // čišćenje: drugi testovi broje ručne ispravke i aktivne filtere (filter se briše kao dugmetom „Obriši filter“)
-  await db.auditLog.deleteMany({ where: { action: "MANUAL_OVERRIDE", reason: "Proveren rezultat – E2E test Kontra" } });
+  await db.auditLog.deleteMany({ where: { action: "MANUAL_OVERRIDE", reason: "Proveren rezultat – E2E test Value" } });
   await db.filterSet.updateMany({ where: { name }, data: { status: "DELETED" } });
   // ručno obračunat demo tip vraćamo u početno stanje (drugi testovi ponovo skeniraju iste demo utakmice)
   await db.filterSetSelection.deleteMany({ where: { trackedSelectionId: t.id } });
   await db.auditLog.deleteMany({ where: { entityType: "TrackedSelection", entityId: t.id } });
   await db.resultUpdate.deleteMany({ where: { matchId: t.matchId } });
   await db.trackedSelection.delete({ where: { id: t.id } });
-  await db.match.update({ where: { id: t.matchId }, data: { finalHomeScore: null, finalAwayScore: null, matchStatus: "NOT_STARTED" } });
+  await db.match.update({ where: { id: t.matchId }, data: { finalHomeScore: null, finalAwayScore: null, matchStatus: "NOT_STARTED", kickoffTime: originalKickoff } });
   await db.$disconnect();
 });

@@ -61,6 +61,10 @@ model Settings {
   kontraTriggerMax           Decimal  @default(1.30) @db.Decimal(4, 2)
   /// Kontra robot: utakmica se preskače ako je 1 ili 2 do ovog praga (uključujući)
   kontraFavoriteMax          Decimal  @default(1.30) @db.Decimal(4, 2)
+  /// Value robot: najmanja vrednost u % i opseg kvote
+  valueMinPct                Decimal  @default(4) @db.Decimal(5, 2)
+  valueMinOdds               Decimal  @default(1.50) @db.Decimal(5, 2)
+  valueMaxOdds               Decimal  @default(5.00) @db.Decimal(5, 2)
   updatedAt                  DateTime @updatedAt
 }
 
@@ -95,12 +99,19 @@ enum MarketType {
   /// Kontra robot: „0–1“ (manje od 1.5 gola) i „4+“ (više od 3.5 gola)
   UNDER_1_5
   OVER_3_5
+  /// Value robot: 3+ / 0–2 i dupla šansa
+  OVER_2_5
+  UNDER_2_5
+  DC_1X
+  DC_X2
+  DC_12
 }
 
 /// Koji robot je napravio skeniranje / kome pripada filter. Stari podaci su OSNOVNI.
 enum Strategy {
   OSNOVNI
   KONTRA
+  VALUE
 }
 
 enum ScanStatus {
@@ -157,6 +168,11 @@ model MarketSelection {
   manualOdds     Boolean              @default(false)
   /// Kontra robot: kvota okidača (2+ za „0–1“, 0–3 za „4+“) u trenutku skeniranja
   triggerOdds    Decimal?             @db.Decimal(8, 4)
+  /// Value robot: Pinnacle kvota (sa maržom) i „poštena“ kvota (bez marže) u trenutku skeniranja
+  refOdds        Decimal?             @db.Decimal(8, 4)
+  fairOdds       Decimal?             @db.Decimal(8, 4)
+  /// Value robot: vrednost u % = kvota / poštena kvota − 1
+  valuePct       Decimal?             @db.Decimal(6, 2)
   createdAt      DateTime             @default(now())
   tracked        TrackedSelection[]
   filterEntries  FilterSetSelection[]

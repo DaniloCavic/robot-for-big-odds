@@ -2,10 +2,10 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Card, EmptyState } from "@/components/ui";
-import { TYPE_LABEL, type KontraStats, type Metrics, type Stats as BaseStats } from "@/lib/stats/compute";
+import { TYPE_LABEL, type Metrics, type Stats as BaseStats, type ValueMetrics, type ValueStats } from "@/lib/stats/compute";
 
 /** Skener velikih kvota: statistika samo za 0–1 i 4+. */
-type Stats = Pick<BaseStats, "overall" | "timeline" | "byFilterSet" | "byCompetition" | "recentLost"> & { kontra: KontraStats };
+type Stats = Pick<BaseStats, "overall" | "timeline" | "byFilterSet" | "byCompetition" | "recentLost"> & { value: ValueStats };
 import { CumulativeLine, WonLostColumns, type PeriodPoint } from "./charts";
 
 const TZ = "Europe/Belgrade";
@@ -115,7 +115,7 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
           )}
           <Insight m={o} />
 
-          <KontraSection k={stats.kontra} />
+          <ValueSection v={stats.value} />
 
           <Card>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -191,61 +191,74 @@ export function StatsClient({ sets }: { sets: { id: string; name: string; delete
   );
 }
 
-/** Skener velikih kvota: tabela po tipu, po kvoti okidača i po kvoti tipa (0–1, 4+). */
-function KontraSection({ k }: { k: KontraStats }) {
-  const head = ["", "Tipova", "Prošlo / palo", "Prolaznost", "Profit", "ROI", "Pros. kvota", "Break-even"];
-  const Row = ({ r, sub = false }: { r: Metrics & { key: string; label: string }; sub?: boolean }) => (
-    <tr className={`border-t border-line/60 tabular-nums ${sub ? "text-xs text-muted" : ""}`} data-row={r.key}>
-      <td className={`py-2 text-left ${sub ? "pl-5" : "font-semibold"}`}>{r.label}</td>
-      <td className="text-right">{r.total}</td>
-      <td className="text-right"><span className="text-won">{r.won}</span> / <span className="text-lost">{r.lost}</span>{r.void ? <span className="text-muted"> · {r.void}v</span> : null}</td>
-      <td className={`text-right ${r.passRate != null && r.breakEven != null ? (r.passRate >= r.breakEven ? "text-won" : "text-lost") : ""}`}>{pct(r.passRate)}</td>
-      <td className={`text-right font-semibold ${tone(r.net)}`}>{r.won + r.lost + r.void ? signed(r.net) : "—"}</td>
-      <td className={`text-right ${tone(r.net)}`}>{pct(r.roi)}</td>
-      <td className="text-right">{r.avgOdds == null ? "—" : r.avgOdds.toFixed(2)}</td>
-      <td className="text-right">{pct(r.breakEven)}</td>
-    </tr>
-  );
-  const Table = ({ children, testId }: { children: React.ReactNode; testId: string }) => (
+/** Value robot: očekivano naspram stvarnog, po tipu, po vrednosti i po kvoti. */
+function ValueSection({ v }: { v: ValueStats }) {
+  const head = ["", "Tipova", "Prošlo / palo", "Prolaznost", "Očekivano prolaza", "Profit", "Očekivani profit", "ROI", "Pros. kvota", "Pros. vrednost"];
+  const Row = ({ r }: { r: ValueMetrics & { key: string; label: string } }) => {
+    const decided = r.won + r.lost;
+    return (
+      <tr className="border-t border-line/60 tabular-nums" data-row={r.key}>
+        <td className="py-2 text-left font-semibold">{r.label}</td>
+        <td className="text-right">{r.total}</td>
+        <td className="text-right"><span className="text-won">{r.won}</span> / <span className="text-lost">{r.lost}</span>{r.void ? <span className="text-muted"> · {r.void}v</span> : null}</td>
+        <td className="text-right">{pct(r.passRate)}</td>
+        <td className="text-right text-muted">{decided ? `${r.expectedWins.toFixed(1)} (${((r.expectedWins / decided) * 100).toFixed(1)}%)` : "—"}</td>
+        <td className={`text-right font-semibold ${tone(r.net)}`}>{r.won + r.lost + r.void ? signed(r.net) : "—"}</td>
+        <td className={`text-right ${tone(r.expectedNet)}`}>{decided ? signed(r.expectedNet) : "—"}</td>
+        <td className={`text-right ${tone(r.net)}`}>{pct(r.roi)}</td>
+        <td className="text-right">{r.avgOdds == null ? "—" : r.avgOdds.toFixed(2)}</td>
+        <td className="text-right">{r.avgValuePct == null ? "—" : `+${r.avgValuePct.toFixed(1)}%`}</td>
+      </tr>
+    );
+  };
+  const Table = ({ rows, testId }: { rows: (ValueMetrics & { key: string; label: string })[]; testId: string }) => (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[680px] text-sm" data-testid={testId}>
+      <table className="w-full min-w-[820px] text-sm" data-testid={testId}>
         <thead className="text-muted"><tr>{head.map((h, i) => <th key={i} className="py-2 text-right font-medium first:text-left">{h}</th>)}</tr></thead>
-        <tbody>{children}</tbody>
+        <tbody>{rows.map((r) => <Row key={r.key} r={r} />)}</tbody>
       </table>
     </div>
   );
-  const decided = k.overall.won + k.overall.lost;
+  const o = v.overall;
+  const decided = o.won + o.lost;
   return (
-    <div className="space-y-4" data-testid="kontra-stats">
+    <div className="space-y-4" data-testid="value-stats">
+      {decided > 0 && (
+        <Card>
+          <h2 className="mb-1 font-semibold">Očekivano (po Pinnacle-u) naspram stvarnog</h2>
+          <p className="mb-3 text-xs text-muted">
+            Očekivani profit = Σ ulog × vrednost tipa. Ako su Pinnacle procene tačne, stvarni profit na dužem uzorku ide ka očekivanom.
+            Na malom uzorku razlika je sreća/peh – važnije je da očekivani profit bude u plusu i da prolaznost prati očekivanu.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3" data-testid="value-expected">
+            <div className="rounded-xl bg-panel-2/60 p-3"><p className="text-xs text-muted">Stvarni profit</p><p className={`text-xl font-semibold tabular-nums ${tone(o.net)}`}>{signed(o.net)}</p></div>
+            <div className="rounded-xl bg-panel-2/60 p-3"><p className="text-xs text-muted">Očekivani profit</p><p className={`text-xl font-semibold tabular-nums ${tone(o.expectedNet)}`}>{signed(o.expectedNet)}</p></div>
+            <div className="rounded-xl bg-panel-2/60 p-3"><p className="text-xs text-muted">Prolazi: stvarno / očekivano</p><p className="text-xl font-semibold tabular-nums">{o.won} / {o.expectedWins.toFixed(1)}</p></div>
+          </div>
+          {decided < 300 && (
+            <p className="mt-3 rounded-lg border border-line px-3 py-2 text-xs text-muted">
+              Uzorak: <b className="text-text">{decided}</b> obračunatih tipova. Kod value betinga zaključak traži bar 300–500 tipova – minus od nekoliko dana je normalan.
+            </p>
+          )}
+        </Card>
+      )}
       <Card>
         <h2 className="mb-1 font-semibold">Po tipu</h2>
-        <p className="mb-4 text-xs text-muted">Break-even = prolaznost potrebna za nulu kod tih kvota (1 / prosečna kvota).</p>
-        <Table testId="kontra-by-type">{k.byType.map((r) => <Row key={r.key} r={r} />)}</Table>
-        {decided < 100 && (
-          <p className="mt-3 rounded-lg border border-line px-3 py-2 text-xs text-muted">
-            Uzorak: <b className="text-text">{decided}</b> obračunatih tipova. Kod kvota oko 3–5 prolazi se 20–30%, pa je niz od 5–10 promašaja normalan –
-            za zaključak treba bar 100–150 tipova.
-          </p>
-        )}
+        <p className="mb-4 text-xs text-muted">Prosečna vrednost = koliko je AdmiralBet kvota bila veća od poštene (Pinnacle bez marže).</p>
+        <Table rows={v.byType} testId="value-by-type" />
       </Card>
-
       <Card>
-        <h2 className="mb-1 font-semibold">Po kvoti okidača</h2>
-        <p className="mb-4 text-xs text-muted">Kvota 2+ (za 0–1) ili 0–3 (za 4+) u trenutku skeniranja – gde kontra najbolje radi.</p>
-        <Table testId="kontra-by-trigger">
-          {k.byTrigger.map((b) => (
-            <Fragment key={b.key}>
-              <Row r={b} />
-              {b.byType.filter((t) => t.total > 0).map((t) => <Row key={`${b.key}-${t.key}`} r={{ ...t, key: `${b.key}-${t.key}` }} sub />)}
-            </Fragment>
-          ))}
-        </Table>
+        <h2 className="mb-1 font-semibold">Ishod ili golovi?</h2>
+        <Table rows={v.byGroup} testId="value-by-group" />
       </Card>
-
       <Card>
-        <h2 className="mb-1 font-semibold">Po kvoti kontra tipa</h2>
-        <p className="mb-4 text-xs text-muted">Kvota 0–1 / 4+ po kojoj je tip igran.</p>
-        <Table testId="kontra-by-odds">{k.byOdds.map((r) => <Row key={r.key} r={r} />)}</Table>
+        <h2 className="mb-1 font-semibold">Po vrednosti</h2>
+        <p className="mb-4 text-xs text-muted">Da li veća vrednost stvarno donosi više – pomaže da se izabere prag u Podešavanjima.</p>
+        <Table rows={v.byValue} testId="value-by-value" />
+      </Card>
+      <Card>
+        <h2 className="mb-1 font-semibold">Po kvoti</h2>
+        <Table rows={v.byOdds} testId="value-by-odds" />
       </Card>
     </div>
   );
