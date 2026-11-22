@@ -207,6 +207,7 @@ export function RobotClient({ providers: serverProviders, initialScans, today, m
           <div className="space-y-3">
             <SourceBox source={source} maxRequests={maxRequests} />
             {source?.configured && source.ok && <CompareBox />}
+            <ReferenceProbeBox />
           </div>
         </div>
 
@@ -452,6 +453,66 @@ type CompareResult = {
   bookmakers: { slug: string; name: string; present: boolean; odds: Record<string, number>;
     goals?: MarketDesc[] }[];
 };
+
+type ProbeResult = {
+  date: string; bookmakers: { id: number; name: string }[]; pinnacle: { id: number; name: string } | null; pinnacleInOdds: boolean;
+  paging: { current: number; total: number } | null; results: number | null;
+  summary: { fixtures: number; bookmakers: { name: string; count: number }[]; bets: { name: string; count: number }[] };
+  sample: { fixtureId: number; date: string | null; league: string | null; bookmakers: { id: number; name: string; bets: { id: number; name: string; values: { value: string; odd: number }[] }[] }[] } | null;
+};
+
+/** Value betting: provera da li API-Football nudi referentne kvote (Pinnacle i druge kladionice). */
+function ReferenceProbeBox() {
+  const [data, setData] = useState<ProbeResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch("/api/value/probe", { method: "POST" });
+      const j = await r.json();
+      if (!r.ok) setErr(j.error ?? "Greška."); else setData(j);
+    } catch { setErr("Greška u vezi."); } finally { setBusy(false); }
+  }
+  return (
+    <div className="rounded-xl border border-line bg-panel-2/50 p-4 text-sm" data-testid="probe-box">
+      <h3 className="mb-1 font-semibold">Referentne kvote (value)</h3>
+      <p className="mb-3 text-xs text-muted">Da li API-Football nudi kvote drugih kladionica (Pinnacle) za „poštenu“ kvotu. Troši 2 API-Football zahteva.</p>
+      <button type="button" onClick={run} disabled={busy} className="rounded-lg border border-accent/50 px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-50">
+        {busy ? "Proveravam…" : "Proveri referentne kvote"}
+      </button>
+      {err && <p className="mt-2 text-xs text-lost" role="alert">{err}</p>}
+      {data && (
+        <div className="mt-3 space-y-2 text-xs" data-testid="probe-result">
+          <p className={data.pinnacle ? "text-won" : "text-lost"}>
+            Pinnacle: <b>{data.pinnacle ? `DA (id ${data.pinnacle.id})` : "NE"}</b>
+            {data.pinnacle && <> · u današnjim kvotama: <b>{data.pinnacleInOdds ? "da" : "ne (na 1. strani)"}</b></>}
+          </p>
+          <p className="text-muted">Kladionica u API-Football-u: <b className="text-text">{data.bookmakers.length}</b> · danas ({data.date}) utakmica sa kvotama: <b className="text-text">{data.results ?? "?"}</b>{data.paging ? ` · strana ${data.paging.current}/${data.paging.total}` : ""}</p>
+          <details>
+            <summary className="cursor-pointer text-muted">Sve kladionice</summary>
+            <p className="mt-1 break-words text-muted">{data.bookmakers.map((b) => `${b.id}: ${b.name}`).join(", ")}</p>
+          </details>
+          <details>
+            <summary className="cursor-pointer text-muted">Kladionice i tržišta na 1. strani</summary>
+            <p className="mt-1 break-words text-muted">Kladionice: {data.summary.bookmakers.map((b) => `${b.name} ×${b.count}`).join(", ") || "—"}</p>
+            <p className="mt-1 break-words text-muted">Tržišta: {data.summary.bets.slice(0, 25).map((b) => `${b.name} ×${b.count}`).join(", ") || "—"}</p>
+          </details>
+          {data.sample && (
+            <details>
+              <summary className="cursor-pointer text-muted">Primer utakmice ({data.sample.league ?? data.sample.fixtureId})</summary>
+              <ul className="mt-1 space-y-1 text-muted">
+                {data.sample.bookmakers.map((b) => (
+                  <li key={b.id}><b className="text-text">{b.name}</b>: {b.bets.map((t) => `${t.name} [${t.values.map((v) => `${v.value} ${v.odd}`).join(", ")}]`).join(" · ") || "—"}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CompareBox() {
   const [data, setData] = useState<CompareResult[] | null>(null);

@@ -7,8 +7,9 @@ import { isRealFootball } from "@/lib/robot/football";
 
 const db = new PrismaClient();
 const DAY = 24 * 3600_000;
-// fiksan period u budućnosti (demo pravi utakmice 10–20h UTC)
-const FROM = new Date(Math.ceil((Date.now() + DAY) / DAY) * DAY);
+// fiksan dan u budućnosti (demo pravi utakmice 10–20h UTC; podaci zavise od datuma, pa je dan fiksan
+// i izabran tako da ima i preskok „oba gola“ i utakmice sa favoritom 1/2)
+const FROM = new Date("2030-01-07T00:00:00Z");
 const TO = new Date(FROM.getTime() + DAY);
 
 async function wipe() {

@@ -16,7 +16,7 @@ const REVIEW_AFTER_H = 36;
 const GIVE_UP_DAYS = 3;
 const AF_DAILY_CAP_DEFAULT = 200;
 /** Brojač uspešnih API-Football zahteva (v2: neuspeli se više ne broje). */
-const AF_COUNTER = "apifootball-ok";
+export const AF_COUNTER = "apifootball-ok";
 
 export type TrackerDeps = {
   db: PrismaClient;

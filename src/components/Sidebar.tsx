@@ -45,7 +45,7 @@ function Brand() {
   return (
     <div className="flex items-center gap-2.5 px-2">
       <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent/15 text-accent"><IconBall /></span>
-      <span className="text-[15px] font-semibold leading-tight">Football Big Odds<br /><span className="text-accent">Scanner</span></span>
+      <span className="text-[15px] font-semibold leading-tight">Football Value<br /><span className="text-accent">Betting</span></span>
     </div>
   );
 }

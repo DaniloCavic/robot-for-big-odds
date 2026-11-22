@@ -12,7 +12,7 @@ export default async function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <span className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-accent/15 text-accent"><IconBall className="h-8 w-8" /></span>
-          <h1 className="text-2xl font-semibold">Football Big Odds Scanner</h1>
+          <h1 className="text-2xl font-semibold">Football Value Betting</h1>
           <p className="mt-1 text-sm text-muted">Prijavite se da biste nastavili</p>
         </div>
         <div className="rounded-2xl border border-line bg-panel p-6"><LoginForm /></div>

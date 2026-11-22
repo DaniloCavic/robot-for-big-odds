@@ -72,6 +72,13 @@ test("DEMO skeniranje: samo 0–1 i 4+ sa kvotom okidača, virtuelni fudbal izba
   await expect(page.getByText("Narednih 7 dana")).toBeVisible();
 });
 
+test("provera referentnih kvota: bez API-Football ključa jasna poruka", async ({ page, isMobile }) => {
+  test.skip(isMobile, "dovoljno na desktopu");
+  await expect(page.getByTestId("probe-box")).toBeVisible();
+  await page.getByRole("button", { name: "Proveri referentne kvote" }).click();
+  await expect(page.getByTestId("probe-box").getByRole("alert")).toContainText("API-Football ključ nije podešen");
+});
+
 test("prilagođeni period u prošlosti se odbija", async ({ page, isMobile }) => {
   test.skip(isMobile, "dovoljno na desktopu");
   await page.getByRole("button", { name: "Prilagođeni period", exact: true }).click();
