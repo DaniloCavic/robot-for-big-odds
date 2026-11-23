@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { isCombo, isKontra, isValidOdds, MARKET_LABELS, type MarketTypeCode } from "@/lib/odds";
 import { KONTRA_MIN_ODDS } from "@/lib/robot/kontra-rules";
+import { toWinStake } from "@/lib/value/stake";
 
 export type StrategyCode = "OSNOVNI" | "KONTRA" | "VALUE";
 export const STRATEGY_LABELS: Record<StrategyCode, string> = { OSNOVNI: "Osnovni", KONTRA: "Kontra", VALUE: "Value" };
@@ -174,7 +175,9 @@ export async function addEntry(db: PrismaClient, input: { filterSetId: string; m
       where: { filterSetId_trackedSelectionId: { filterSetId: set.id, trackedSelectionId: tracked.id } },
     });
     if (existing && !existing.removedAt) throw new FilterError("Ovaj tip je već u filteru.", 409);
-    const data = { marketSelectionId: ms.id, oddsSnapshot: ms.odds, stake: set.stakePerSelection, addedAt: now, removedAt: null };
+    // Value filter: ulog „na dobitak“ – prolaz donosi tačno stakePerSelection čistog dobitka (npr. kvota 3.00 → ulog 500)
+    const stake = set.strategy === "VALUE" ? new Prisma.Decimal(toWinStake(set.stakePerSelection.toNumber(), ms.odds.toNumber())) : set.stakePerSelection;
+    const data = { marketSelectionId: ms.id, oddsSnapshot: ms.odds, stake, addedAt: now, removedAt: null };
     const entry = existing
       ? await tx.filterSetSelection.update({ where: { id: existing.id }, data })
       : await tx.filterSetSelection.create({ data: { ...data, filterSetId: set.id, trackedSelectionId: tracked.id } });

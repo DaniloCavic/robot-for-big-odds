@@ -68,7 +68,7 @@ test("podešavanja: pravila value robota i ulog se proveravaju i čuvaju trajno"
   const minPct = page.getByLabel("Najmanja vrednost (%)");
   const minOdds = page.getByLabel("Najmanja kvota");
   const maxOdds = page.getByLabel("Najveća kvota");
-  const stake = page.getByLabel("Ulog po tipu (RSD)");
+  const stake = page.getByLabel("Dobitak po tipu (RSD)");
   await expect(minPct).toHaveValue("4.0");
   await expect(minOdds).toHaveValue("1.50");
   await expect(maxOdds).toHaveValue("5.00");

@@ -3,6 +3,7 @@ import { buildReference, findValueTips, refMarketsFromBets } from "@/lib/value/r
 import { outcomeFor } from "@/lib/results/settle-math";
 import { demoValueFixtures } from "@/lib/robot/providers/demo";
 import { computeValueStats, type StatRow } from "@/lib/stats/compute";
+import { toWinStake } from "@/lib/value/stake";
 
 // Pinnacle iz primera sa ekrana (Brazil · Serie A)
 const PIN = [
@@ -92,5 +93,22 @@ describe("demo i statistika", () => {
     expect(v.overall.avgValuePct).toBeCloseTo(10, 6);
     expect(v.byValue.find((b) => b.key === "8-12")!.total).toBe(3);
     expect(v.byType).toHaveLength(1);
+  });
+});
+
+describe("ulog „na dobitak“", () => {
+  it("prolaz donosi 1.000 čistog dobitka", () => {
+    expect(toWinStake(1000, 3)).toBe(500);
+    expect(toWinStake(1000, 2)).toBe(1000);
+    expect(toWinStake(1000, 5)).toBe(250);
+    expect(toWinStake(1000, 1.5)).toBe(2000);
+    expect(toWinStake(1000, 1.82)).toBe(1219.51);
+    for (const o of [1.53, 1.82, 2.37, 3.15, 4.9]) {
+      const s = toWinStake(1000, o);
+      expect(Math.abs(Math.round(s * o * 100) / 100 - s - 1000)).toBeLessThanOrEqual(0.03); // zaokruživanje uloga na pare
+    }
+  });
+  it("neispravna kvota", () => {
+    expect(() => toWinStake(1000, 1)).toThrow();
   });
 });

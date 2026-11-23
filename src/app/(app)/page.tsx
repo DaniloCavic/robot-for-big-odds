@@ -29,7 +29,7 @@ export default async function DashboardPage() {
         <StatCard label="Aktivne selekcije" value={String(active)} hint={`Na čekanju i uživo · planirani ulog ${formatRsd(planned._sum.stake?.toNumber() ?? 0)}`} tone="live" />
         <StatCard label="Završeni tipovi" value={String(sum.won + sum.lost + sum.void)} hint={`Prošlo / palo: ${sum.won} / ${sum.lost}${sum.void ? ` · vraćeno ${sum.void}` : ""}`} />
         <StatCard label="Prolaznost" value={sum.passRate == null ? "—" : `${sum.passRate.toFixed(1)}%`} hint="WON / (WON + LOST)" tone="won" />
-        <StatCard label="Neto profit / gubitak" value={(sum.netProfit > 0 ? "+" : "") + formatRsd(sum.netProfit)} hint={`Uloženo ${formatRsd(sum.settledStake)} · ${formatRsd(settings.stakePerSelection)} po tipu`} tone={sum.netProfit > 0 ? "won" : sum.netProfit < 0 ? "lost" : "default"} />
+        <StatCard label="Neto profit / gubitak" value={(sum.netProfit > 0 ? "+" : "") + formatRsd(sum.netProfit)} hint={`Uloženo ${formatRsd(sum.settledStake)} · dobitak ${formatRsd(settings.stakePerSelection)} po tipu`} tone={sum.netProfit > 0 ? "won" : sum.netProfit < 0 ? "lost" : "default"} />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -53,7 +53,7 @@ export default async function DashboardPage() {
             <div className="flex justify-between gap-4"><dt className="text-muted">Najmanja vrednost</dt><dd className="font-medium tabular-nums">{settings.valueMinPct}%</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Kvote</dt><dd className="font-medium tabular-nums">{formatOdds(settings.valueMinOdds)}–{formatOdds(settings.valueMaxOdds)}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Tipovi</dt><dd className="font-medium">1, X, 2, 1X, X2, 12, golovi</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-muted">Ulog po tipu</dt><dd className="font-medium tabular-nums">{formatRsd(settings.stakePerSelection)}</dd></div>
+            <div className="flex justify-between gap-4"><dt className="text-muted">Dobitak po tipu</dt><dd className="font-medium tabular-nums">{formatRsd(settings.stakePerSelection)}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Sport</dt><dd className="font-medium">Samo pravi fudbal</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-muted">Vremenska zona</dt><dd className="font-medium">{settings.timezone}</dd></div>
           </dl>

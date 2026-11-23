@@ -10,7 +10,7 @@ export default async function SettingsPage() {
   const [settings, user] = await Promise.all([getSettings(), requireUser()]);
   return (
     <>
-      <PageHeader title="Podešavanja" subtitle="Pravila value robota, ulog, izvori podataka i nalog." />
+      <PageHeader title="Podešavanja" subtitle="Pravila value robota, dobitak po tipu, izvori podataka i nalog." />
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
         <Card>

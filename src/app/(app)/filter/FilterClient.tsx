@@ -103,7 +103,8 @@ export function FilterClient({ initialSets, scans }: { initialSets: FilterSetDto
   async function addAll(list: SelectionDto[]) {
     if (!setId || !activeSet) return flash("Prvo napravite ili izaberite filter (desno).", "err");
     if (list.length === 0) return flash("Svi vidljivi tipovi su već u filteru.", "err");
-    const total = list.length * activeSet.stakePerSelection;
+    // ulog „na dobitak“: prolaz donosi tačno stakePerSelection čistog dobitka
+    const total = list.reduce((a, s) => a + Math.round((activeSet.stakePerSelection / (s.odds - 1)) * 100) / 100, 0);
     if (!window.confirm(`Dodati ${list.length} tipova u filter „${activeSet.name}“?\nPlanirani ulog: ${rsd(total)}`)) return;
     setBulkBusy(true);
     try {
@@ -341,7 +342,7 @@ export function FilterClient({ initialSets, scans }: { initialSets: FilterSetDto
 
               <dl className="mb-3 grid grid-cols-3 gap-2 rounded-xl bg-panel-2/60 p-3 text-sm">
                 <div><dt className="text-xs text-muted">Tipova</dt><dd className="font-semibold tabular-nums" data-testid="filter-count">{entries.length}</dd></div>
-                <div><dt className="text-xs text-muted">Ulog po tipu</dt><dd className="font-semibold tabular-nums">{rsd(activeSet.stakePerSelection)}</dd></div>
+                <div><dt className="text-xs text-muted">Dobitak po tipu</dt><dd className="font-semibold tabular-nums">{rsd(activeSet.stakePerSelection)}</dd></div>
                 <div><dt className="text-xs text-muted">Planirani ulog</dt><dd className="font-semibold tabular-nums">{rsd(plannedStake)}</dd></div>
               </dl>
               {summary && summary.won + summary.lost + summary.void > 0 && (
@@ -376,7 +377,10 @@ export function FilterClient({ initialSets, scans }: { initialSets: FilterSetDto
                           <p className="truncate font-medium">{e.homeTeam} – {e.awayTeam}</p>
                           <p className="truncate text-xs text-muted">{fmt.format(new Date(e.kickoffTime))} · {e.competition}{e.valuePct != null ? ` · fer ${e.fairOdds?.toFixed(2)} (+${e.valuePct.toFixed(1)}%)` : ""} · {e.source} {e.isDemo && <DemoBadge />}</p>
                         </div>
-                        <span className="tabular-nums text-accent" data-odds={e.odds} data-combo={e.label.includes("&") ? "1" : undefined}>{e.odds.toFixed(2)}</span>
+                        <span className="flex flex-col items-end">
+                          <span className="tabular-nums text-accent" data-odds={e.odds} data-combo={e.label.includes("&") ? "1" : undefined}>{e.odds.toFixed(2)}</span>
+                          <span className="text-[11px] tabular-nums text-muted" data-testid="entry-stake" data-stake={e.stake}>ulog {rsd(e.stake)}</span>
+                        </span>
                         <span className="hidden flex-col items-end gap-0.5 sm:flex">
                           <StatusPill status={e.status} />
                           {e.netProfit != null && <span className={`text-xs tabular-nums ${e.netProfit > 0 ? "text-won" : e.netProfit < 0 ? "text-lost" : "text-muted"}`}>{e.home != null ? `${e.home}:${e.away} · ` : ""}{signedRsd(e.netProfit)}</span>}
@@ -389,7 +393,7 @@ export function FilterClient({ initialSets, scans }: { initialSets: FilterSetDto
                 )}
               </DropZone>
 
-              <p className="mt-3 text-xs text-muted">Svaki tip je zasebna simulirana opklada od {rsd(activeSet.stakePerSelection)}, bez dublova i kombinacija. Kvota i ulog se zaključavaju pri dodavanju. Rezultati se obračunavaju automatski posle utakmice.</p>
+              <p className="mt-3 text-xs text-muted">Svaki tip je zasebna simulirana opklada, bez dublova i kombinacija. Ulog je takav da prolaz donosi {rsd(activeSet.stakePerSelection)} čistog dobitka (ulog = dobitak / (kvota − 1), npr. kvota 3.00 → ulog {rsd(activeSet.stakePerSelection / 2)}). Kvota i ulog se zaključavaju pri dodavanju. Rezultati se obračunavaju automatski posle utakmice.</p>
             </>
           )}
         </Card>

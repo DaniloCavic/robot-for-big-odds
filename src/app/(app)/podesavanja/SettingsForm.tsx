@@ -11,9 +11,9 @@ export function SettingsForm({ stake, maxRequests, checkMinutes, opChecks, afCap
     <form action={action} className="space-y-5">
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
-          <label htmlFor="stakePerSelection" className="mb-1.5 block text-sm text-muted">Ulog po tipu (RSD)</label>
+          <label htmlFor="stakePerSelection" className="mb-1.5 block text-sm text-muted">Dobitak po tipu (RSD)</label>
           <input id="stakePerSelection" name="stakePerSelection" inputMode="decimal" defaultValue={stake.toFixed(2)} className={input} />
-          <p className="mt-1.5 text-xs text-muted">Važi samo za nove obračune, stari se ne menjaju.</p>
+          <p className="mt-1.5 text-xs text-muted">Ulog se računa po kvoti tako da prolaz donese ovoliko čistog dobitka: kvota 3.00 → ulog {(stake / 2).toFixed(0)}, kvota 1.50 → ulog {(stake * 2).toFixed(0)}. Važi za tipove dodate od sada.</p>
         </div>
         <div>
           <label htmlFor="maxRequestsPerScan" className="mb-1.5 block text-sm text-muted">Limit API zahteva po skeniranju</label>
