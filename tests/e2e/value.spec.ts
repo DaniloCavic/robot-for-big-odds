@@ -67,11 +67,11 @@ test("ceo tok: skeniranje → „Dodaj sve“ u filter → ručni rezultat → p
 
   const settled = await db.filterSetSelection.findUniqueOrThrow({ where: { id: entry.id } });
   expect(settled.settlementStatus).toBe("WON");
-  // ulog „na dobitak“: ulog = 1.000 / (kvota − 1), prolaz donosi ~1.000 čistog dobitka
+  // ulog „na dobitak“: ulog = 1.000 / (kvota − 1) zaokružen naviše na ceo dinar → prolaz donosi bar 1.000
   const stake = entry.stake.toNumber();
-  expect(stake).toBeCloseTo(1000 / (entry.oddsSnapshot.toNumber() - 1), 1);
+  expect(stake).toBe(Math.ceil(1000 / (entry.oddsSnapshot.toNumber() - 1) - 1e-9));
   const expectedNet = Math.round((Math.round(stake * entry.oddsSnapshot.toNumber() * 100) / 100 - stake) * 100) / 100;
-  expect(expectedNet).toBeCloseTo(1000, 0);
+  expect(expectedNet).toBeGreaterThanOrEqual(999.99);
   expect(settled.netProfit!.toNumber()).toBeCloseTo(expectedNet, 2);
 
   // 4) Filter pokazuje prolaz i profit

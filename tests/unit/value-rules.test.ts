@@ -97,15 +97,20 @@ describe("demo i statistika", () => {
 });
 
 describe("ulog „na dobitak“", () => {
-  it("prolaz donosi 1.000 čistog dobitka", () => {
+  it("prolaz donosi bar 1.000 čistog dobitka; ulog zaokružen naviše na ceo dinar", () => {
     expect(toWinStake(1000, 3)).toBe(500);
     expect(toWinStake(1000, 2)).toBe(1000);
     expect(toWinStake(1000, 5)).toBe(250);
     expect(toWinStake(1000, 1.5)).toBe(2000);
-    expect(toWinStake(1000, 1.82)).toBe(1219.51);
+    expect(toWinStake(1000, 1.82)).toBe(1220); // 1.219,51 → 1.220
+    expect(toWinStake(1000, 2.0016)).toBe(999); // 998,40 → 999
+    expect(toWinStake(1000, 1.1)).toBe(10000); // tačan ceo broj ostaje (ne 10.001)
     for (const o of [1.53, 1.82, 2.37, 3.15, 4.9]) {
       const s = toWinStake(1000, o);
-      expect(Math.abs(Math.round(s * o * 100) / 100 - s - 1000)).toBeLessThanOrEqual(0.03); // zaokruživanje uloga na pare
+      expect(Number.isInteger(s)).toBe(true);
+      const net = Math.round(s * o * 100) / 100 - s;
+      expect(net).toBeGreaterThanOrEqual(999.99);
+      expect(net).toBeLessThan(1000 + (o - 1) + 0.01);
     }
   });
   it("neispravna kvota", () => {

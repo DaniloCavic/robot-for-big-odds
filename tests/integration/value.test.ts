@@ -61,7 +61,7 @@ describe("Value skeniranje (demo izvor)", () => {
     expect(r.added).toBe(tips.length);
     // svaki tip ima ulog po kvoti, ne fiksnih 1.000
     const entries = await db.filterSetSelection.findMany({ where: { filterSetId: set } });
-    for (const en of entries) expect(en.stake.toNumber()).toBe(Math.round((1000 / (en.oddsSnapshot.toNumber() - 1)) * 100) / 100);
+    for (const en of entries) expect(en.stake.toNumber()).toBe(Math.ceil(1000 / (en.oddsSnapshot.toNumber() - 1) - 1e-9));
     // tip bez vrednosti (npr. stari) ne ulazi u Value filter; value tip ne ulazi u drugi filter
     const plain = await db.marketSelection.create({ data: { matchId: tips[0].matchId, scanId: scan.id, marketType: "HOME_OVER_1_5", odds: 1.6, oddsTimestamp: new Date(), source: "T" } });
     await expect(addEntry(db, { filterSetId: set, marketSelectionId: plain.id, maxOdds: 1.3, now: before })).rejects.toThrow(/samo tipove koje je našao value robot/);
@@ -80,8 +80,8 @@ describe("Value skeniranje (demo izvor)", () => {
     expect(e.settlementStatus).toBe(won ? "WON" : "LOST");
     // ulog „na dobitak“: ulog = 1.000 / (kvota − 1) → prolaz donosi 1.000 (± zaokruživanje), pad −ulog
     const stake = e.stake.toNumber();
-    expect(stake).toBe(Math.round((1000 / (t.odds.toNumber() - 1)) * 100) / 100);
+    expect(stake).toBe(Math.ceil(1000 / (t.odds.toNumber() - 1) - 1e-9));
     expect(e.netProfit!.toNumber()).toBeCloseTo(won ? Math.round(stake * t.odds.toNumber() * 100) / 100 - stake : -stake, 2);
-    if (won) expect(Math.abs(e.netProfit!.toNumber() - 1000)).toBeLessThanOrEqual(0.03);
+    if (won) expect(e.netProfit!.toNumber()).toBeGreaterThanOrEqual(999.99);
   });
 });

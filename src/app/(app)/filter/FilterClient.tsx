@@ -104,7 +104,7 @@ export function FilterClient({ initialSets, scans }: { initialSets: FilterSetDto
     if (!setId || !activeSet) return flash("Prvo napravite ili izaberite filter (desno).", "err");
     if (list.length === 0) return flash("Svi vidljivi tipovi su već u filteru.", "err");
     // ulog „na dobitak“: prolaz donosi tačno stakePerSelection čistog dobitka
-    const total = list.reduce((a, s) => a + Math.round((activeSet.stakePerSelection / (s.odds - 1)) * 100) / 100, 0);
+    const total = list.reduce((a, s) => a + Math.ceil(activeSet.stakePerSelection / (s.odds - 1) - 1e-9), 0);
     if (!window.confirm(`Dodati ${list.length} tipova u filter „${activeSet.name}“?\nPlanirani ulog: ${rsd(total)}`)) return;
     setBulkBusy(true);
     try {
@@ -393,7 +393,7 @@ export function FilterClient({ initialSets, scans }: { initialSets: FilterSetDto
                 )}
               </DropZone>
 
-              <p className="mt-3 text-xs text-muted">Svaki tip je zasebna simulirana opklada, bez dublova i kombinacija. Ulog je takav da prolaz donosi {rsd(activeSet.stakePerSelection)} čistog dobitka (ulog = dobitak / (kvota − 1), npr. kvota 3.00 → ulog {rsd(activeSet.stakePerSelection / 2)}). Kvota i ulog se zaključavaju pri dodavanju. Rezultati se obračunavaju automatski posle utakmice.</p>
+              <p className="mt-3 text-xs text-muted">Svaki tip je zasebna simulirana opklada, bez dublova i kombinacija. Ulog je takav da prolaz donosi bar {rsd(activeSet.stakePerSelection)} čistog dobitka (ulog = dobitak / (kvota − 1), zaokružen naviše na ceo dinar; npr. kvota 3.00 → ulog {rsd(activeSet.stakePerSelection / 2)}). Kvota i ulog se zaključavaju pri dodavanju. Rezultati se obračunavaju automatski posle utakmice.</p>
             </>
           )}
         </Card>
